@@ -111,6 +111,7 @@ public final class MainActivity extends Activity implements
     private Marker myMarker;
     private final List<Marker> searchMapMarkers=new ArrayList<>();
     private final List<PoiItem> searchPoiResults=new ArrayList<>();
+    private final List<DrivePath> driveAlternatives=new ArrayList<>();
     private Polyline routeLine;
     private static final int PICK_MARKER_IMAGE = 3001;
     private boolean initialized = false;
@@ -274,6 +275,9 @@ public final class MainActivity extends Activity implements
         findViewById(R.id.favoriteButton).setOnClickListener(v -> toggleFavorite());
         modeGroup.setOnCheckedChangeListener((g,id) -> {
             clearRouteLine();
+            driveAlternatives.clear();
+            LinearLayout alt=findViewById(R.id.routeAlternatives);
+            if(alt!=null)alt.removeAllViews();
             if (destination != null) {
                 routeSummary.setText(getString(R.string.view_route));
                 ((Button)findViewById(R.id.routeButton)).setText(R.string.view_route);
@@ -583,6 +587,9 @@ public final class MainActivity extends Activity implements
         clearSearchMarkers();
         destination = point;
         destinationName = label;
+        driveAlternatives.clear();
+        LinearLayout alternativeRows=findViewById(R.id.routeAlternatives);
+        if(alternativeRows!=null)alternativeRows.removeAllViews();
         rememberPlace(point,label);
         closeSearch();
         searchBarTitle.setText(label);
@@ -647,10 +654,7 @@ public final class MainActivity extends Activity implements
                 routeFailed(code);
                 return;
             }
-            DrivePath path = result.getPaths().get(0);
-            List<LatLng> points = new ArrayList<>();
-            for (DriveStep step : path.getSteps()) appendPolyline(points, step.getPolyline());
-            drawRoute(points, path.getDistance(), path.getDuration(), "รถยนต์");
+            showDriveRoutes(result.getPaths());
         });
     }
 
@@ -671,6 +675,50 @@ public final class MainActivity extends Activity implements
 
     @Override public void onBusRouteSearched(BusRouteResult result, int code) { }
     @Override public void onRideRouteSearched(RideRouteResult result, int code) { }
+
+
+    private void showDriveRoutes(List<DrivePath> paths) {
+        driveAlternatives.clear();
+        LinearLayout container=findViewById(R.id.routeAlternatives);
+        if(container==null)return;
+        container.removeAllViews();
+        for(int i=0;i<paths.size()&&i<3;i++)driveAlternatives.add(paths.get(i));
+        if(driveAlternatives.isEmpty())return;
+        for(int i=0;i<driveAlternatives.size();i++){
+            final int index=i;
+            DrivePath p=driveAlternatives.get(i);
+            String label=NaviLocale.text(this,"เส้นทาง ","Route ")+(i+1)+"  ·  "+
+                String.format(java.util.Locale.US,"%.1f km",p.getDistance()/1000f)+"  ·  "+
+                Math.max(1L,Math.round(p.getDuration()/60f))+
+                NaviLocale.text(this," นาที"," min");
+            if(p.getTolls()>0)label+="  ·  "+NaviLocale.text(this,"ค่าผ่านทาง ~","Toll ~")
+                +String.format(java.util.Locale.US,"%.0f",p.getTolls());
+            TextView row=new TextView(this);
+            row.setText(label);
+            row.setTextColor(getColor(R.color.nav_primary));
+            row.setTextSize(14);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setMinHeight(dp(48));
+            row.setPadding(dp(12),dp(6),dp(12),dp(6));
+            row.setOnClickListener(v->displayDriveRoute(index));
+            container.addView(row);
+        }
+        displayDriveRoute(0);
+    }
+    private void displayDriveRoute(int index) {
+        if(index<0||index>=driveAlternatives.size())return;
+        DrivePath path=driveAlternatives.get(index);
+        List<LatLng> points=new ArrayList<>();
+        if(path.getSteps()!=null)
+            for(DriveStep step:path.getSteps())
+                appendPolyline(points,step.getPolyline());
+        drawRoute(points,path.getDistance(),path.getDuration(),
+            NaviLocale.text(this,"รถยนต์","Driving"));
+        if(path.getTolls()>0){
+            routeSummary.setText(routeSummary.getText()+" · "+NaviLocale.text(this,
+                "ผ่านทาง ~","Toll ~")+String.format(java.util.Locale.US,"%.0f",path.getTolls()));
+        }
+    }
 
     private void drawRoute(List<LatLng> points, float distanceMeters, long seconds, String mode) {
         clearRouteLine();
@@ -723,6 +771,9 @@ public final class MainActivity extends Activity implements
             destinationMarker = null;
         }
         routePanel.setVisibility(View.GONE);
+        driveAlternatives.clear();
+        LinearLayout alt=findViewById(R.id.routeAlternatives);
+        if(alt!=null)alt.removeAllViews();
         routeExpanded.setVisibility(View.GONE);
         routeOpen=false;
         searchBarTitle.setText(R.string.search_placeholder);
