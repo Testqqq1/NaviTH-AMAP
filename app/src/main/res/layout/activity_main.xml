@@ -205,6 +205,20 @@
                 android:textSize="12sp" android:textColor="@color/nav_secondary"
                 android:maxLines="2" android:ellipsize="end"
                 android:visibility="gone"/>
+            <LinearLayout android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:orientation="horizontal"
+                android:layout_marginTop="4dp">
+                <TextView android:id="@+id/saveHomeButton"
+                    android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp"
+                    android:gravity="center_vertical" android:text="@string/home_set"
+                    android:textSize="14sp" android:textColor="@color/nav_primary"
+                    android:clickable="true" android:focusable="true" />
+                <TextView android:id="@+id/saveWorkButton"
+                    android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp"
+                    android:gravity="center_vertical" android:text="@string/work_set"
+                    android:textSize="14sp" android:textColor="@color/nav_primary"
+                    android:clickable="true" android:focusable="true" />
+            </LinearLayout>
             <TextView android:id="@+id/favoriteButton"
                 android:layout_width="match_parent" android:layout_height="48dp"
                 android:gravity="center_vertical"
