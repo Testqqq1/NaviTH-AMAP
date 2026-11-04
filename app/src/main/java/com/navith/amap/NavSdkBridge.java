@@ -30,7 +30,7 @@ public final class NavSdkBridge {
             Class.forName("com.amap.api.navi.AMapNavi");
             Class.forName("com.amap.api.navi.AmapNaviPage");
             Class.forName("com.amap.api.navi.AmapNaviParams");
-            Class.forName("com.amap.api.navi.model.Poi");
+            Class.forName("com.amap.api.maps.model.Poi");
             return true;
         } catch (Throwable unavailable) {
             return false;
@@ -90,7 +90,7 @@ public final class NavSdkBridge {
             agree.invoke(null, activity.getApplicationContext(), true);
 
             // Manifest already carries AMAP_KEY; no hardcoded credential here.
-            Class<?> poiType = Class.forName("com.amap.api.navi.model.Poi");
+            Class<?> poiType = Class.forName("com.amap.api.maps.model.Poi");
             Constructor<?> poiConstructor = poiType.getConstructor(
                 String.class, LatLng.class, String.class);
             Object target = poiConstructor.newInstance(
