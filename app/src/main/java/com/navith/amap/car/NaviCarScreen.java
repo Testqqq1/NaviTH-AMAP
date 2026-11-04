@@ -43,6 +43,7 @@ import com.amap.api.maps.MapsInitializer;
 import com.amap.api.maps.model.BitmapDescriptorFactory;
 import com.amap.api.maps.model.LatLng;
 import com.amap.api.maps.model.LatLngBounds;
+import com.amap.api.maps.model.Marker;
 import com.amap.api.maps.model.MarkerOptions;
 import com.amap.api.maps.model.PolylineOptions;
 import com.amap.api.services.core.LatLonPoint;
@@ -73,6 +74,7 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
     private Presentation presentation;
     private MapView mapView;
     private AMap map;
+    private Marker carLocationMarker;
     private RouteSearch routeSearch;
     private LocationManager locationManager;
     private final LocationListener locationListener = new LocationListener() {
@@ -93,7 +95,9 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         changes=(shared,key) -> {
             if (TripStore.DESTINATION.equals(key) || TripStore.ROUTE.equals(key) || TripStore.LOCATION.equals(key)) {
                 new Handler(Looper.getMainLooper()).post(() -> {
-                    updateMap();invalidate();
+                    if (TripStore.LOCATION.equals(key)) updateLocationMarker();
+                    else updateMap();
+                    invalidate();
                     if (TripStore.DESTINATION.equals(key) && TripStore.destination(getCarContext())!=null) calculateCarRoute();
                 });
             }
@@ -261,13 +265,27 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
                 new CameraPosition.Builder(map.getCameraPosition()).tilt(third ? 55f : 0f).build()));
     }
 
+    private void updateLocationMarker() {
+        if (map==null) return;
+        LatLng at=TripStore.location(getCarContext());
+        if (at==null) return;
+        if (carLocationMarker==null) {
+            carLocationMarker=map.addMarker(new MarkerOptions().position(at).title("ตำแหน่งล่าสุด")
+                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
+        } else carLocationMarker.setPosition(at);
+        // Do not clear and redraw the full route whenever GPS moves.
+        if (TripStore.route(getCarContext()).size()<2)
+            map.moveCamera(CameraUpdateFactory.newLatLng(at));
+    }
+
     private void updateMap() {
         if (map==null) return;
         map.clear();
+        carLocationMarker=null;
         LatLng from=TripStore.location(getCarContext());
         LatLng dest=TripStore.destination(getCarContext());
         List<LatLng> path=TripStore.route(getCarContext());
-        if (from!=null) map.addMarker(new MarkerOptions().position(from).title("ตำแหน่งล่าสุด")
+        if (from!=null) carLocationMarker=map.addMarker(new MarkerOptions().position(from).title("ตำแหน่งล่าสุด")
                 .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
         if (dest!=null) map.addMarker(new MarkerOptions().position(dest).title(TripStore.destinationName(getCarContext())));
         if (path.size()>=2) {
@@ -288,6 +306,7 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
     @Override public void onVisibleAreaChanged(@NonNull Rect area) { /* host overlays are outside our map view */ }
     private void releasePresentation() {
         map=null;
+        carLocationMarker=null;
         if(mapView!=null){try{mapView.onPause();mapView.onDestroy();}catch(Exception ignored){} mapView=null;}
         if(presentation!=null){try{presentation.dismiss();}catch(Exception ignored){}presentation=null;}
         if(virtualDisplay!=null){try{virtualDisplay.release();}catch(Exception ignored){}virtualDisplay=null;}
