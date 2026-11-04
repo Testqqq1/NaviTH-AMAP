@@ -41,6 +41,17 @@ public final class TripStore {
     public static boolean hasRecentLocation(Context c) {
         return location(c) != null && System.currentTimeMillis()-prefs(c).getLong("location_time",0L) < 120_000;
     }
+    /** Last known position when Android Auto session ends; not a verified parking event. */
+    public static void saveParking(Context c, LatLng l) {
+        if (l != null) prefs(c).edit()
+                .putString("park_lat",Double.toString(l.latitude))
+                .putString("park_lon",Double.toString(l.longitude))
+                .putLong("park_time",System.currentTimeMillis()).apply();
+    }
+    public static LatLng parkedLocation(Context c) {
+        return point(c, "park_lat", "park_lon");
+    }
+
     public static void setDestination(Context c, LatLng d, String name) {
         if (d == null) return;
         prefs(c).edit().putString("dest_lat",Double.toString(d.latitude))
