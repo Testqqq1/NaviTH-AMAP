@@ -330,10 +330,14 @@ public final class MainActivity extends Activity implements
             if(NaviGuidanceStore.isNavigating(this)) {
                 NavSdkBridge.stopNavigation(this);
                 refreshNavigationAction();
-            } else if(hasRoutePreview && destination!=null && NavSdkBridge.isInstalled()) {
-                NavSdkBridge.openRoute(this,destination,destinationName,destinationPoiId);
-            } else status(tr("คำนวณเส้นทางก่อนเริ่มนำทาง",
-                "Calculate a route before starting navigation"));
+            } else if(destination==null) {
+                status(tr("เลือกจุดหมายก่อน","Choose a destination first"));
+            } else {
+                boolean walking=modeGroup.getCheckedRadioButtonId()==R.id.modeWalk;
+                if(!walking && NavSdkBridge.isInstalled())
+                    NavSdkBridge.openRoute(this,destination,destinationName,destinationPoiId);
+                else NavSdkBridge.openExternalRoute(this,destination,walking);
+            }
         });
         findViewById(R.id.addressLookupButton).setOnClickListener(v -> {
             if(destination!=null)reverseSelectedAddress(destination);
@@ -345,12 +349,12 @@ public final class MainActivity extends Activity implements
             if(alt!=null)alt.removeAllViews();
             if (destination != null) {
                 hasRoutePreview=false;
-                findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
+                refreshNavigationAction();
                 routeSummary.setText(getString(R.string.view_route));
                 Button action=findViewById(R.id.routeButton);
                 action.setText(R.string.view_route);
-                action.setBackgroundResource(R.drawable.nav_bg_button);
-                action.setTextColor(Color.WHITE);
+                action.setBackgroundResource(R.drawable.nav_bg_subtle);
+                action.setTextColor(getColor(R.color.nav_primary));
             }
         });
         map.setOnMapTouchListener(e -> {
@@ -369,6 +373,10 @@ public final class MainActivity extends Activity implements
             reverseSelectedAddress(latLng);
         });
         map.setOnMarkerClickListener(marker -> {
+            if(myMarker!=null && marker.equals(myMarker)){
+                chooseVehicleIcon();
+                return true;
+            }
             if (marker.equals(destinationMarker)) {
                 routePanel.setVisibility(View.VISIBLE);
                 marker.showInfoWindow();
@@ -904,10 +912,10 @@ public final class MainActivity extends Activity implements
         destinationText.setText(label);
         routeSummary.setText(tr("เลือกจุดหมายแล้ว • ดูเส้นทาง","Destination selected · View route"));
         hasRoutePreview=false;
-        findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
+        refreshNavigationAction();
         Button routeAction=findViewById(R.id.routeButton);
-        routeAction.setBackgroundResource(R.drawable.nav_bg_button);
-        routeAction.setTextColor(Color.WHITE);
+        routeAction.setBackgroundResource(R.drawable.nav_bg_subtle);
+        routeAction.setTextColor(getColor(R.color.nav_primary));
         routePanel.setVisibility(View.VISIBLE);
         homePanel.setVisibility(View.GONE);
         routeExpanded.setVisibility(View.GONE);
@@ -937,7 +945,7 @@ public final class MainActivity extends Activity implements
         TripStore.clearRoute(this);
         routeSummary.setText(tr("กำลังคำนวณเส้นทาง…","Calculating route…"));
         hasRoutePreview=false;
-        findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
+        refreshNavigationAction();
         try {
             RouteSearch.FromAndTo fromAndTo = new RouteSearch.FromAndTo(
                     toPoint(myLocation), toPoint(destination));
@@ -1055,21 +1063,20 @@ public final class MainActivity extends Activity implements
         routeSummary.setText(mode + "  •  " + km + "  •  " + time);
         ((Button)findViewById(R.id.routeButton)).setText(R.string.change_route);
         hasRoutePreview=true;
-        boolean canStart=NavSdkBridge.isInstalled() &&
-            modeGroup.getCheckedRadioButtonId()!=R.id.modeWalk;
-        findViewById(R.id.startNavigationButton).setVisibility(canStart?View.VISIBLE:View.GONE);
+        refreshNavigationAction();
         Button routeAction=findViewById(R.id.routeButton);
-        routeAction.setBackgroundResource(canStart?R.drawable.nav_bg_subtle:R.drawable.nav_bg_button);
-        routeAction.setTextColor(canStart?getColor(R.color.nav_primary):Color.WHITE);
+        routeAction.setBackgroundResource(R.drawable.nav_bg_subtle);
+        routeAction.setTextColor(getColor(R.color.nav_primary));
         TripStore.setRoute(this, points, distanceMeters, seconds, mode);
         status(tr("ดูเส้นทางไป ","Route preview to ")+destinationName);
     }
 
     private void routeFailed(int code) {
         hasRoutePreview=false;
-        findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
-        routeSummary.setText(tr("ไม่พบเส้นทาง (","No route (")+code+tr(") • ตรวจสอบพื้นที่บริการ",") · Check coverage"));
-        status(tr("อาจไม่มีข้อมูลเส้นทางในพื้นที่นี้","Route data may be unavailable here"));
+        refreshNavigationAction();
+        routeSummary.setText(tr("AMAP ไม่พบเส้นทาง (","AMAP route unavailable (")+code+
+            tr(") • ยังสามารถลองเริ่มนำทางได้",") · You can still try navigation"));
+        status(tr("ข้อมูลเส้นทางอาจไม่ครอบคลุมพื้นที่นี้","Routing coverage may be unavailable here"));
     }
 
     private void appendPolyline(List<LatLng> output, List<LatLonPoint> path) {
@@ -1241,21 +1248,25 @@ public final class MainActivity extends Activity implements
     }
 
     private void chooseVehicleIcon() {
-        String[] types = {"รถเก๋ง 🚗", "แฮทช์แบ็ค 🚙", "รถตู้ 🚐", "SUV 🚙",
-                "รถกระบะ 🛻", "รถสปอร์ต 🏎", "ลูกศร ➤", "เลือกรูปของคุณเอง..."};
-        new AlertDialog.Builder(this).setTitle("ไอคอนตำแหน่งบนแผนที่ (2D)")
-            .setSingleChoiceItems(types, getViewPrefs().getInt("vehicle_icon", 6), (d,index)->{
+        // Reuse the full set of top-down 2.5D markers already available in Settings.
+        String[] labels=new String[10];
+        for(int i=0;i<labels.length;i++)
+            labels[i]=NavigationMarkerFactory.label(this,i);
+        new AlertDialog.Builder(this)
+            .setTitle(tr("เลือกไอคอนบนแผนที่","Choose map marker"))
+            .setSingleChoiceItems(labels,getViewPrefs().getInt("vehicle_icon",6),(d,index)->{
                 d.dismiss();
-                if (index == 7) {
-                    Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                if(index==NavigationMarkerFactory.OWN_IMAGE) {
+                    Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT);
                     pick.setType("image/*");
                     pick.addCategory(Intent.CATEGORY_OPENABLE);
-                    startActivityForResult(pick, PICK_MARKER_IMAGE);
-                } else {
-                    getViewPrefs().edit().putInt("vehicle_icon", index).apply();
-                    if (myMarker != null) myMarker.setIcon(currentMarkerIcon());
+                    startActivityForResult(pick,PICK_MARKER_IMAGE);
+                }else{
+                    getViewPrefs().edit().putInt("vehicle_icon",index).apply();
+                    if(myMarker!=null)myMarker.setIcon(currentMarkerIcon());
                 }
-            }).setNegativeButton("ปิด", null).show();
+            })
+            .setNegativeButton(tr("ปิด","Close"),null).show();
     }
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
@@ -1742,15 +1753,20 @@ public final class MainActivity extends Activity implements
     }
 
     private void refreshNavigationAction() {
-        if(!initialized || destination==null)return;
+        if(!initialized)return;
         Button b=findViewById(R.id.startNavigationButton);
         if(b==null)return;
         boolean running=NaviGuidanceStore.isNavigating(this);
-        b.setVisibility(NavSdkBridge.isInstalled() &&
-            (running || hasRoutePreview) &&
-            modeGroup.getCheckedRadioButtonId()!=R.id.modeWalk ? View.VISIBLE:View.GONE);
-        b.setText(running ? tr("หยุดนำทาง","Stop navigation")
-            : tr("เริ่มนำทาง","Start navigation"));
+        if(destination==null && !running) {
+            b.setVisibility(View.GONE);return;
+        }
+        boolean walking=modeGroup!=null &&
+            modeGroup.getCheckedRadioButtonId()==R.id.modeWalk;
+        b.setVisibility(View.VISIBLE);
+        b.setText(running?tr("หยุดนำทาง","Stop navigation")
+            :walking?getString(R.string.open_walking_navigation)
+            :NavSdkBridge.isInstalled()?tr("เริ่มนำทาง (ทดลอง)","Start navigation (test)")
+            :getString(R.string.open_external_navigation));
         b.setContentDescription(b.getText());
     }
     private void showNavigationStateOnce() {

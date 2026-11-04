@@ -48,6 +48,8 @@
     <string name="search_network_error">ค้นหาไม่สำเร็จ ตรวจการเชื่อมต่อแล้วลองอีกครั้ง</string>
     <string name="voice_not_available">ยังไม่มีบริการรับเสียงพูดในเครื่อง</string>
     <string name="gps_accuracy">GPS ยังไม่แม่นยำ</string>
+    <string name="open_external_navigation">นำทางด้วย Google Maps</string>
+    <string name="open_walking_navigation">เดินนำทางด้วย Google Maps</string>
     <string name="start_navigation_test">เริ่มนำทาง (ทดลอง)</string>
     <string name="route_ready">เส้นทางพร้อมแล้ว</string>
     <string name="settings_advanced">ขั้นสูงและนักพัฒนา</string>
