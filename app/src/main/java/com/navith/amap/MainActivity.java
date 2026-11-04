@@ -7,6 +7,18 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.content.Intent;
+import android.content.res.Configuration;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.drawable.GradientDrawable;
+import android.widget.RadioButton;
+import android.graphics.Typeface;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import com.amap.api.maps.model.BitmapDescriptor;
+import com.amap.api.maps.model.CameraPosition;
 import android.location.Location;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -82,7 +94,7 @@ public final class MainActivity extends Activity implements
     private Marker destinationMarker;
     private Marker myMarker;
     private Polyline routeLine;
-    private boolean satellite = false;
+    private static final int PICK_MARKER_IMAGE = 3001;
     private boolean initialized = false;
     private boolean locationRequested = false;
     private PoiSearch activePoiSearch;
@@ -178,6 +190,7 @@ public final class MainActivity extends Activity implements
         map.getUiSettings().setCompassEnabled(true);
         map.getUiSettings().setScaleControlsEnabled(true);
         map.moveCamera(CameraUpdateFactory.newLatLngZoom(DEFAULT_CENTER, 12.5f));
+        applyMapPreferences();
 
         searchInput = findViewById(R.id.searchInput);
         statusText = findViewById(R.id.statusText);
@@ -198,11 +211,16 @@ public final class MainActivity extends Activity implements
             return false;
         });
         findViewById(R.id.locationButton).setOnClickListener(v -> recenter());
-        findViewById(R.id.mapTypeButton).setOnClickListener(v -> {
-            satellite = !satellite;
-            map.setMapType(satellite ? AMap.MAP_TYPE_SATELLITE : AMap.MAP_TYPE_NORMAL);
-            status(satellite ? "แสดงแผนที่ดาวเทียม" : "แสดงแผนที่ปกติ");
+        findViewById(R.id.mapTypeButton).setOnClickListener(v -> chooseMapTheme());
+        findViewById(R.id.viewButton).setOnClickListener(v -> {
+            getViewPrefs().edit().putBoolean("view3d", !getViewPrefs().getBoolean("view3d", true)).apply();
+            applyMapPreferences();
         });
+        findViewById(R.id.trafficButton).setOnClickListener(v -> {
+            getViewPrefs().edit().putBoolean("traffic", !getViewPrefs().getBoolean("traffic", true)).apply();
+            applyMapPreferences();
+        });
+        findViewById(R.id.settingsButton).setOnClickListener(v -> showMapSettings());
         findViewById(R.id.routeButton).setOnClickListener(v -> calculateRoute());
         findViewById(R.id.clearButton).setOnClickListener(v -> clearDestination());
         modeGroup.setOnCheckedChangeListener((g, id) -> {
@@ -496,7 +514,7 @@ public final class MainActivity extends Activity implements
                 routeSearch.calculateWalkRouteAsyn(query);
             } else {
                 RouteSearch.DriveRouteQuery query = new RouteSearch.DriveRouteQuery(
-                        fromAndTo, RouteSearch.DRIVING_SINGLE_DEFAULT, null, null, "");
+                        fromAndTo, routeStrategy(), null, null, "");
                 routeSearch.calculateDriveRouteAsyn(query);
             }
         } catch (Exception e) {
@@ -590,6 +608,221 @@ public final class MainActivity extends Activity implements
         status("เลือกจุดหมายใหม่โดยค้นหาหรือแตะค้างบนแผนที่");
     }
 
+
+    private SharedPreferences getViewPrefs() {
+        return getSharedPreferences("navith_view", MODE_PRIVATE);
+    }
+
+    private int routeStrategy() {
+        SharedPreferences p = getViewPrefs();
+        boolean toll = p.getBoolean("avoid_tolls", false);
+        boolean highway = p.getBoolean("avoid_highway", false);
+        boolean congestion = p.getBoolean("avoid_traffic", true);
+        if (toll && highway && congestion) return RouteSearch.DRIVING_SINGLE_NO_HIGHWAY_SAVE_MONEY_AVOID_CONGESTION;
+        if (toll && highway) return RouteSearch.DRIVING_SINGLE_NO_HIGHWAY_SAVE_MONEY;
+        if (toll && congestion) return RouteSearch.DRIVING_SINGLE_SAVE_MONEY_AVOID_CONGESTION;
+        if (highway) return RouteSearch.DRIVING_SINGLE_NO_HIGHWAY;
+        if (toll) return RouteSearch.DRIVING_SINGLE_SAVE_MONEY;
+        return congestion ? RouteSearch.DRIVING_SINGLE_AVOID_CONGESTION : RouteSearch.DRIVING_SINGLE_DEFAULT;
+    }
+
+    private void applyMapPreferences() {
+        if (map == null) return;
+        SharedPreferences p = getViewPrefs();
+        String theme = p.getString("theme", "auto");
+        boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                == Configuration.UI_MODE_NIGHT_YES;
+        int type = "satellite".equals(theme) ? AMap.MAP_TYPE_SATELLITE
+                : ("night".equals(theme) || ("auto".equals(theme) && dark))
+                    ? AMap.MAP_TYPE_NIGHT : AMap.MAP_TYPE_NORMAL;
+        map.setMapType(type);
+        map.setTrafficEnabled(p.getBoolean("traffic", true));
+        boolean threed = p.getBoolean("view3d", true);
+        map.showBuildings(threed);
+        CameraPosition current = map.getCameraPosition();
+        map.moveCamera(CameraUpdateFactory.newCameraPosition(
+                new CameraPosition.Builder(current).tilt(threed ? 55f : 0f).build()));
+        Button mode = findViewById(R.id.viewButton);
+        if (mode != null) mode.setText(threed ? "3D เปิด" : "2D");
+        Button traffic = findViewById(R.id.trafficButton);
+        if (traffic != null) traffic.setText(p.getBoolean("traffic", true) ? "จราจร ✓" : "จราจร ✕");
+        if (myMarker != null) myMarker.setIcon(currentMarkerIcon());
+    }
+
+    private BitmapDescriptor currentMarkerIcon() {
+        int kind = getViewPrefs().getInt("vehicle_icon", 6);
+        if (kind == 7) {
+            File file = new File(getFilesDir(), "navith_marker.png");
+            if (file.exists()) {
+                Bitmap b = BitmapFactory.decodeFile(file.getAbsolutePath());
+                if (b != null) return BitmapDescriptorFactory.fromBitmap(b);
+            }
+        }
+        String[] icons = {"🚗", "🚙", "🚐", "🚙", "🛻", "🏎", "➤"};
+        String glyph = icons[Math.max(0, Math.min(6, kind))];
+        TextView iconView = new TextView(this);
+        iconView.setText(glyph);
+        iconView.setTextSize(27f);
+        iconView.setTextColor(Color.rgb(8,127,118));
+        iconView.setTypeface(null, Typeface.BOLD);
+        iconView.setGravity(Gravity.CENTER);
+        iconView.setPadding(dp(7), dp(5), dp(7), dp(5));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.WHITE);
+        bg.setCornerRadius(dp(20));
+        bg.setStroke(dp(2), Color.rgb(8,127,118));
+        iconView.setBackground(bg);
+        return BitmapDescriptorFactory.fromView(iconView);
+    }
+
+    private void chooseMapTheme() {
+        String[] labels = {"อัตโนมัติตามเครื่อง", "กลางวัน", "กลางคืน", "ดาวเทียม"};
+        String[] values = {"auto", "day", "night", "satellite"};
+        String selected = getViewPrefs().getString("theme", "auto");
+        int current = java.util.Arrays.asList(values).indexOf(selected);
+        new AlertDialog.Builder(this).setTitle("ธีมแผนที่")
+            .setSingleChoiceItems(labels, current, (dialog,which) -> {
+                getViewPrefs().edit().putString("theme", values[which]).apply();
+                dialog.dismiss();
+                applyMapPreferences();
+            }).setNegativeButton("ยกเลิก", null).show();
+    }
+
+    private void showMapSettings() {
+        SharedPreferences p = getViewPrefs();
+        String[] items = {
+            "มุมมอง: " + (p.getBoolean("view3d", true) ? "3D" : "2D"),
+            "ธีม: " + p.getString("theme", "auto"),
+            "จราจรสด: " + (p.getBoolean("traffic", true) ? "เปิด" : "ปิด"),
+            "ซูมเริ่มต้น: " + p.getFloat("zoom", 16f),
+            "ไอคอนรถ / ลูกศร / รูปของฉัน",
+            "ตั้งค่าหลีกเลี่ยงเส้นทาง",
+            "ความเร็ว: " + (p.getBoolean("mph", false) ? "mph" : "km/h"),
+            "บันทึกที่จอดรถ ณ ตำแหน่งนี้",
+            "ดูตำแหน่งที่จอดล่าสุด",
+            "รายละเอียดระบบนำทางขั้นสูง"
+        };
+        new AlertDialog.Builder(this).setTitle("ตั้งค่า NaviTH")
+            .setItems(items, (d,index)-> {
+                switch(index) {
+                    case 0:
+                        p.edit().putBoolean("view3d", !p.getBoolean("view3d", true)).apply();
+                        applyMapPreferences(); break;
+                    case 1: chooseMapTheme(); break;
+                    case 2:
+                        p.edit().putBoolean("traffic", !p.getBoolean("traffic", true)).apply();
+                        applyMapPreferences(); break;
+                    case 3: chooseDefaultZoom(); break;
+                    case 4: chooseVehicleIcon(); break;
+                    case 5: chooseRouteOptions(); break;
+                    case 6:
+                        p.edit().putBoolean("mph", !p.getBoolean("mph", false)).apply();
+                        status("ตั้งค่าหน่วยความเร็วแล้ว"); break;
+                    case 7:
+                        if (myLocation != null && TripStore.hasRecentLocation(this)) {
+                            TripStore.saveParking(this, myLocation);
+                            status("บันทึกตำแหน่งที่จอดรถแล้ว");
+                        } else status("ยังไม่มี GPS ที่เป็นปัจจุบันสำหรับบันทึกที่จอด"); break;
+                    case 8: showParking(); break;
+                    default:
+                        new AlertDialog.Builder(this).setTitle("ระบบนำทางขั้นสูง")
+                            .setMessage("เวอร์ชันนี้รองรับแผนที่ 2D/3D ตามข้อมูลที่มี, ตำแหน่ง GPS, จราจรสด, ค้นหาสถานที่, การดูตัวอย่างเส้นทาง และ Android Auto Preview\n\nยังไม่มีการนำทางเลี้ยวต่อเลี้ยว, แนะนำช่องจราจร, แจ้งกล้องจับความเร็ว, EV routing หรือ Offline Navigation หลายประเทศ ต้องใช้ Navigation SDK และข้อมูลที่ได้รับสิทธิ์เพิ่มเติม")
+                            .setPositiveButton("ตกลง", null).show();
+                }
+            }).setNegativeButton("ปิด", null).show();
+    }
+
+    private void chooseDefaultZoom() {
+        String[] items = {"10 • ภาพรวมเมือง", "13 • ระดับย่าน", "16 • ระดับถนน", "18 • รายละเอียดถนน"};
+        final float[] levels = {10f, 13f, 16f, 18f};
+        new AlertDialog.Builder(this).setTitle("ซูมเริ่มต้นเมื่อกด GPS")
+            .setItems(items, (d,which)->{
+                getViewPrefs().edit().putFloat("zoom", levels[which]).apply();
+                if (map != null && myLocation != null)
+                    map.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation, levels[which]));
+            }).show();
+    }
+
+    private void chooseVehicleIcon() {
+        String[] types = {"รถเก๋ง 🚗", "แฮทช์แบ็ค 🚙", "รถตู้ 🚐", "SUV 🚙",
+                "รถกระบะ 🛻", "รถสปอร์ต 🏎", "ลูกศร ➤", "เลือกรูปของคุณเอง..."};
+        new AlertDialog.Builder(this).setTitle("ไอคอนตำแหน่งบนแผนที่ (2D)")
+            .setSingleChoiceItems(types, getViewPrefs().getInt("vehicle_icon", 6), (d,index)->{
+                d.dismiss();
+                if (index == 7) {
+                    Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    pick.setType("image/*");
+                    pick.addCategory(Intent.CATEGORY_OPENABLE);
+                    startActivityForResult(pick, PICK_MARKER_IMAGE);
+                } else {
+                    getViewPrefs().edit().putInt("vehicle_icon", index).apply();
+                    if (myMarker != null) myMarker.setIcon(currentMarkerIcon());
+                }
+            }).setNegativeButton("ปิด", null).show();
+    }
+
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request != PICK_MARKER_IMAGE || result != RESULT_OK || data == null || data.getData() == null) return;
+        try {
+            android.net.Uri uri = data.getData();
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inJustDecodeBounds = true;
+            try (InputStream stream = getContentResolver().openInputStream(uri)) {
+                BitmapFactory.decodeStream(stream, null, options);
+            }
+            if (options.outWidth <= 0 || options.outHeight <= 0) throw new IllegalArgumentException("รูปไม่รองรับ");
+            options.inJustDecodeBounds = false;
+            options.inSampleSize = 1;
+            while (Math.max(options.outWidth/options.inSampleSize,
+                    options.outHeight/options.inSampleSize) > 512) options.inSampleSize *= 2;
+            Bitmap b;
+            try (InputStream stream = getContentResolver().openInputStream(uri)) {
+                b = BitmapFactory.decodeStream(stream, null, options);
+            }
+            if (b == null) throw new IllegalArgumentException("ไม่สามารถอ่านรูป");
+            Bitmap scaled = Bitmap.createScaledBitmap(b, 96, 96, true);
+            try (FileOutputStream out = new FileOutputStream(new File(getFilesDir(), "navith_marker.png"))) {
+                scaled.compress(Bitmap.CompressFormat.PNG, 100, out);
+            }
+            if (b != scaled) b.recycle();
+            scaled.recycle();
+            getViewPrefs().edit().putInt("vehicle_icon", 7).apply();
+            if (myMarker != null) myMarker.setIcon(currentMarkerIcon());
+            status("เปลี่ยนเป็นรูปตำแหน่งของคุณแล้ว");
+        } catch (Exception e) {
+            status("เพิ่มรูปไม่ได้ • ลองเลือกรูป PNG/JPG ขนาดเล็ก");
+        }
+    }
+
+    private void chooseRouteOptions() {
+        SharedPreferences p = getViewPrefs();
+        String[] choices = {"หลีกเลี่ยงค่าผ่านทาง", "หลีกเลี่ยงทางด่วน/มอเตอร์เวย์",
+                "หลีกเลี่ยงรถติด (เมื่อมีข้อมูล)"};
+        String[] keys = {"avoid_tolls","avoid_highway","avoid_traffic"};
+        boolean[] checked = {p.getBoolean(keys[0],false),p.getBoolean(keys[1],false),
+                p.getBoolean(keys[2],true)};
+        new AlertDialog.Builder(this).setTitle("รูปแบบการคำนวณเส้นทาง")
+            .setMultiChoiceItems(choices, checked, (dialog,index,on) -> {
+                p.edit().putBoolean(keys[index], on).apply();
+            }).setPositiveButton("บันทึก", (d,w)->{
+                status("อัปเดตเงื่อนไขเส้นทางแล้ว • กดแสดงเส้นทางอีกครั้ง");
+            }).show();
+    }
+
+    private void showParking() {
+        LatLng parked = TripStore.parkedLocation(this);
+        if (parked == null) {
+            new AlertDialog.Builder(this).setMessage("ยังไม่มีพิกัดที่จอดรถ").setPositiveButton("ปิด",null).show();
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("ที่จอดรถล่าสุด")
+            .setMessage(String.format(Locale.US, "พิกัด %.6f, %.6f\nบันทึกโดยแอปในเครื่องเท่านั้น", parked.latitude, parked.longitude))
+            .setPositiveButton("แสดงบนแผนที่", (d,w)->{
+                chooseDestination(parked, "ที่จอดรถล่าสุด");
+            }).setNegativeButton("ปิด",null).show();
+    }
+
     private void hideKeyboard() {
         ((InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE))
                 .hideSoftInputFromWindow(searchInput.getWindowToken(), 0);
@@ -608,6 +841,7 @@ public final class MainActivity extends Activity implements
     @Override protected void onResume() {
         super.onResume();
         if (mapView != null) mapView.onResume();
+        if (initialized && map != null) applyMapPreferences();
         if (initialized && hasLocationPermission()) locateOnce();
     }
 
