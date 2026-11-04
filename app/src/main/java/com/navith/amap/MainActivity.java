@@ -35,6 +35,8 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import com.amap.api.maps.model.BitmapDescriptor;
 import com.amap.api.maps.model.CameraPosition;
+import com.amap.api.maps.model.Circle;
+import com.amap.api.maps.model.CircleOptions;
 import android.location.Location;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -109,6 +111,7 @@ public final class MainActivity extends Activity implements
     private String destinationName = "";
     private Marker destinationMarker;
     private Marker myMarker;
+    private Circle accuracyRing;
     private final List<Marker> searchMapMarkers=new ArrayList<>();
     private final List<PoiItem> searchPoiResults=new ArrayList<>();
     private final List<DrivePath> driveAlternatives=new ArrayList<>();
@@ -433,7 +436,8 @@ public final class MainActivity extends Activity implements
             float speedKmh = fix.hasSpeed() ? fix.getSpeed() * 3.6f : 0f;
             boolean miles = getViewPrefs().getBoolean("mph", false);
             String units=miles ? " mph" : " km/h";
-            gpsStatus.setText("◎ ±" + Math.round(accuracy) + " ม.  ·  "
+            String prefix=accuracy>80f?"⚠ ":"◎ ";
+            gpsStatus.setText(prefix+"±"+Math.round(accuracy)+ (NaviLocale.thai(this)?" ม.":" m")+"  ·  "
                     + Math.round(miles ? speedKmh / 1.609344f : speedKmh) + units);
             gpsStatus.setContentDescription(getString(R.string.my_position) + " ±"
                     + Math.round(accuracy) + (NaviLocale.thai(this) ? " เมตร" : " meters"));
@@ -452,6 +456,18 @@ public final class MainActivity extends Activity implements
         if (fix != null && fix.hasBearing() && fix.hasSpeed() && fix.getSpeed() > 2f) {
             myMarker.setRotateAngle(360f - fix.getBearing());
         }
+        if(fix!=null && fix.hasAccuracy() && fix.getAccuracy()>0){
+            double radius=Math.min(250.0,Math.max(5.0,fix.getAccuracy()));
+            if(accuracyRing==null){
+                accuracyRing=map.addCircle(new CircleOptions().center(myLocation).radius(radius)
+                    .fillColor(0x132B83D5).strokeColor(0x552B83D5)
+                    .strokeWidth(dp(1)).zIndex(0.1f));
+            }else{
+                accuracyRing.setCenter(myLocation);
+                accuracyRing.setRadius(radius);
+            }
+        }
+        updateLocationMarkerVisibility();
     }
 
     private void onLocated(AMapLocation loc) {
@@ -1174,7 +1190,9 @@ public final class MainActivity extends Activity implements
         }
     }
     private void updateLocationMarkerVisibility() {
-        if(myMarker!=null)myMarker.setVisible(getViewPrefs().getBoolean("show_location",true));
+        boolean visible=getViewPrefs().getBoolean("show_location",true);
+        if(myMarker!=null)myMarker.setVisible(visible);
+        if(accuracyRing!=null)accuracyRing.setVisible(visible);
         if(gpsStatus!=null) {
             if(!hasLocationPermission())gpsStatus.setText(R.string.gps_permission);
             else if(myLocation==null)gpsStatus.setText(R.string.gps_searching);
