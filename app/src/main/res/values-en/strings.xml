@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NaviTH Maps</string>
+    <string name="nav_brand">NaviTH Maps</string>
+    <string name="search_placeholder">Search places or addresses</string>
+    <string name="search_title">Search places</string>
+    <string name="search_clear">Clear search</string>
+    <string name="back">Back</string>
+    <string name="settings_title">Settings</string>
+    <string name="layers_title">Map layers</string>
+    <string name="my_position">My location</string>
+    <string name="gps_searching">Locating…</string>
+    <string name="gps_permission">Enable location</string>
+    <string name="gps_low_accuracy">Location accuracy is low</string>
+    <string name="recent_places">Recent places</string>
+    <string name="favorite_places">Favorites</string>
+    <string name="search_results">Search results</string>
+    <string name="search_empty">Enter a destination or choose a recent place</string>
+    <string name="destination">Destination</string>
+    <string name="view_route">View route</string>
+    <string name="change_route">Recalculate</string>
+    <string name="more_options">Route details</string>
+    <string name="close_route">Clear route</string>
+    <string name="drive">Driving</string>
+    <string name="walk">Walking</string>
+    <string name="route_not_navigation">Route preview only; turn-by-turn navigation is not available yet</string>
+    <string name="layers">Layers</string>
+    <string name="settings">Settings</string>
+    <string name="view_traffic">Live traffic</string>
+    <string name="view_labels">Map labels</string>
+    <string name="view_3d">3D buildings and view</string>
+    <string name="view_satellite">Satellite</string>
+    <string name="layer_unsupported">Additional map data/service required</string>
+    <string name="language">Language</string>
+    <string name="english">English</string>
+    <string name="thai">ไทย</string>
+    <string name="not_yet_available">Not available yet</string>
+</resources>
