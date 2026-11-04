@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <dimen name="nav_gutter">16dp</dimen>
+  <dimen name="nav_radius_card">22dp</dimen>
+  <dimen name="nav_radius_button">16dp</dimen>
+  <dimen name="nav_touch_min">48dp</dimen>
+  <dimen name="nav_sheet_padding">18dp</dimen>
+</resources>
