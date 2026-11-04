@@ -122,6 +122,7 @@ public final class MainActivity extends Activity implements
     private long lastSharedFixUptime = 0L;
     private long lastCameraFollowUptime = 0L;
     private float smoothHeading=Float.NaN;
+    private float smoothMarkerHeading=Float.NaN;
     private long lastReportedNavState=0L;
     private float lastLocationAccuracy = Float.MAX_VALUE;
     private boolean followLocation = true;
@@ -582,8 +583,17 @@ public final class MainActivity extends Activity implements
         // AMap ground-flat marker inherits the map pitch/bearing. Rotate relative
         // to geographical north, not relative to the screen/phone orientation.
         if(fix!=null && fix.hasBearing() && fix.hasSpeed() &&
-            fix.getSpeed()>1.5f && fix.hasAccuracy() && fix.getAccuracy()<=70f)
-            myMarker.setRotateAngle(NavigationMarkerFactory.angleForBearing(fix.getBearing()));
+            fix.getSpeed()>1.5f && fix.hasAccuracy() && fix.getAccuracy()<=70f) {
+            float newHeading=fix.getBearing();
+            if(!Float.isFinite(smoothMarkerHeading))smoothMarkerHeading=newHeading;
+            else {
+                float delta=((newHeading-smoothMarkerHeading+540f)%360f)-180f;
+                smoothMarkerHeading=(smoothMarkerHeading+
+                    Math.max(-28f,Math.min(28f,delta*0.40f))+360f)%360f;
+            }
+            myMarker.setRotateAngle(
+                NavigationMarkerFactory.angleForBearing(smoothMarkerHeading));
+        }
         myMarker.setAlpha(fix!=null && fix.hasAccuracy() &&
             fix.getAccuracy()>80f ? 0.60f : 1f);
         if(fix!=null && fix.hasAccuracy() && fix.getAccuracy()>0){
@@ -1782,6 +1792,7 @@ public final class MainActivity extends Activity implements
             routeSummary.setText(tr("ถึงจุดหมายแล้ว","You have arrived"));
             followLocation=false;
             smoothHeading=Float.NaN;
+            smoothMarkerHeading=Float.NaN;
         }else if("error".equals(phase)) {
             String message=NaviGuidanceStore.message(this);
             routeSummary.setText(message.isEmpty()?
@@ -1790,6 +1801,7 @@ public final class MainActivity extends Activity implements
             routeSummary.setText(tr("ดูเส้นทางอีกครั้งเพื่อเริ่มเดินทาง",
                 "Review route to begin again"));
             smoothHeading=Float.NaN;
+            smoothMarkerHeading=Float.NaN;
         }
     }
 

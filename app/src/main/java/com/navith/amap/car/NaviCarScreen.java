@@ -93,6 +93,7 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
     private Circle carAccuracyRing;
     private BitmapDescriptor carArrowIcon;
     private float smoothCarHeading=Float.NaN;
+    private float smoothCarMarkerHeading=Float.NaN;
     private RouteSearch routeSearch;
     private LocationManager locationManager;
     private final LocationListener locationListener = new LocationListener() {
@@ -373,8 +374,16 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
                 .icon(carMarkerIcon()).zIndex(8f));
         } else carLocationMarker.setPosition(at);
         float heading=TripStore.heading(getCarContext());
-        if(heading>=0f)carLocationMarker.setRotateAngle(
-            NavigationMarkerFactory.angleForBearing(heading));
+        if(heading>=0f) {
+            if(!Float.isFinite(smoothCarMarkerHeading))smoothCarMarkerHeading=heading;
+            else {
+                float delta=((heading-smoothCarMarkerHeading+540f)%360f)-180f;
+                smoothCarMarkerHeading=(smoothCarMarkerHeading+
+                    Math.max(-28f,Math.min(28f,delta*0.40f))+360f)%360f;
+            }
+            carLocationMarker.setRotateAngle(
+                NavigationMarkerFactory.angleForBearing(smoothCarMarkerHeading));
+        }
         boolean fresh=TripStore.hasFreshNavigationLocation(getCarContext());
         float accuracy=TripStore.accuracy(getCarContext());
         carLocationMarker.setAlpha(fresh && (accuracy<0f||accuracy<=80f)?1f:0.55f);
