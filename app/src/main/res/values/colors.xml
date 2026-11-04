@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="nav_primary">#0F766E</color>
+    <color name="nav_primary_dark">#115E59</color>
+    <color name="nav_text">#12313A</color>
+    <color name="nav_secondary">#5B6B73</color>
+    <color name="nav_surface">#EEF5F7</color>
+    <color name="nav_route">#087F73</color>
+    <color name="nav_error">#C2414A</color>
+    <color name="nav_warning">#D97706</color>
+    <color name="nav_card">#FFFFFF</color>
+    <color name="nav_border">#E2EBED</color>
+</resources>
