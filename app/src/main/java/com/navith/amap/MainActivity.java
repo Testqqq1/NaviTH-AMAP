@@ -2011,6 +2011,14 @@ public final class MainActivity extends Activity implements
     private static LatLonPoint toPoint(LatLng p) { return new LatLonPoint(p.latitude, p.longitude); }
     private static LatLng toLatLng(LatLonPoint p) { return new LatLng(p.getLatitude(), p.getLongitude()); }
 
+    @Override public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if(initialized) {
+            applyHomeChrome();
+            applyMapPreferences();
+        }
+    }
+
     @Override protected void onResume() {
         super.onResume();
         if (initialized && !NaviLocale.language(this).equals(activeLanguage)) {
