@@ -129,6 +129,10 @@
                 android:text="☆  บันทึกเป็นสถานที่โปรด"
                 android:textSize="14sp" android:textColor="@color/nav_primary"
                 android:clickable="true" android:focusable="true" />
+            <LinearLayout android:id="@+id/routeAlternatives"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
             <TextView android:id="@+id/routeOptionsButton"
                 android:layout_width="match_parent" android:layout_height="48dp"
                 android:gravity="center_vertical" android:text="⚙  ตัวเลือกเส้นทาง   ›"
