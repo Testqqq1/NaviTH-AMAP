@@ -172,12 +172,13 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
                 applyCarMapStyle();
                 invalidate();
             }).build();
+        // Keep a maximum of three primary car actions to avoid driver distraction.
         ActionStrip.Builder actionBar=new ActionStrip.Builder()
-            .addAction(search).addAction(locate).addAction(view);
-        if (!dest.isEmpty()) {
-            actionBar.addAction(new Action.Builder().setTitle(tr("ล้างเส้นทาง","Clear route"))
-                    .setOnClickListener(() -> TripStore.clearDestination(getCarContext())).build());
-        }
+            .addAction(search).addAction(locate);
+        if (dest.isEmpty()) actionBar.addAction(view);
+        else actionBar.addAction(new Action.Builder()
+            .setTitle(tr("ล้าง","Clear"))
+            .setOnClickListener(()->TripStore.clearDestination(getCarContext())).build());
         NaviGuidanceStore.Snapshot guidance=NaviGuidanceStore.fresh(getCarContext());
         // A genuine vendor NaviInfo callback is the ONLY source of turn-by-turn
         // guidance. The normal RouteSearch polyline remains a preview.
@@ -328,7 +329,7 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         map.setTrafficEnabled(viewPrefs.getBoolean("traffic",true));
         boolean third=viewPrefs.getBoolean("view3d",true);
         map.showBuildings(third && viewPrefs.getBoolean("buildings",true));
-        map.showMapText(viewPrefs.getBoolean("labels",false));
+        map.showMapText(viewPrefs.getBoolean("labels",true));
         map.moveCamera(CameraUpdateFactory.newCameraPosition(
                 new CameraPosition.Builder(map.getCameraPosition()).tilt(third ? 55f : 0f).build()));
     }

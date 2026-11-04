@@ -325,8 +325,13 @@ public final class MainActivity extends Activity implements
             LinearLayout alt=findViewById(R.id.routeAlternatives);
             if(alt!=null)alt.removeAllViews();
             if (destination != null) {
+                hasRoutePreview=false;
+                findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
                 routeSummary.setText(getString(R.string.view_route));
-                ((Button)findViewById(R.id.routeButton)).setText(R.string.view_route);
+                Button action=findViewById(R.id.routeButton);
+                action.setText(R.string.view_route);
+                action.setBackgroundResource(R.drawable.nav_bg_button);
+                action.setTextColor(Color.WHITE);
             }
         });
         map.setOnMapTouchListener(e -> {
@@ -559,7 +564,7 @@ public final class MainActivity extends Activity implements
     private void searchPlaces() {
         String term = searchInput.getText().toString().trim();
         if (TextUtils.isEmpty(term)) {
-            searchInput.setError("กรอกคำค้นหาก่อน");
+            searchInput.setError(tr("กรอกคำค้นหาก่อน","Enter a place or address"));
             return;
         }
         searchResultsHeading.setText(getString(R.string.search_results));
@@ -1094,7 +1099,7 @@ public final class MainActivity extends Activity implements
         map.setTrafficEnabled(p.getBoolean("traffic", true));
         boolean threed = p.getBoolean("view3d", true);
         map.showBuildings(threed && p.getBoolean("buildings",true));
-        map.showMapText(p.getBoolean("labels",false));
+        map.showMapText(p.getBoolean("labels",true));
         CameraPosition current = map.getCameraPosition();
         map.moveCamera(CameraUpdateFactory.newCameraPosition(
                 new CameraPosition.Builder(current).tilt(threed ? 55f : 0f).build()));
