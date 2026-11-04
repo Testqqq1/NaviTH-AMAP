@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NaviTH AMAP JS API Demo (web only)</title>
+<style>html,body,#map{margin:0;width:100%;height:100%;font-family:sans-serif}</style>
+</head><body><div id="map" role="region" aria-label="แผนที่"></div>
+<script>
+  // Replace these with a separately authorized JavaScript SDK key and security code.
+  // Never place the private Web Service API key or Android Key in this web page.
+  window._AMapSecurityConfig={securityJsCode:'REPLACE_JS_SECURITY_CODE'};
+  window._AMapServiceConfig={type:'oversea_sg'};
+</script>
+<script src="https://sg-webapi.opnavi.com/maps?v=2.0&amp;key=REPLACE_JS_MAP_KEY"></script>
+<script>
+  // Map constructor and coordinate array are from AMAP JS API, not Google Maps.
+  if(window.AMap) {
+    const map=new AMap.Map('map',{viewMode:'3D',zoom:13,
+      showOversea:true,center:[100.5018,13.7563]});
+  }
+</script></body></html>
