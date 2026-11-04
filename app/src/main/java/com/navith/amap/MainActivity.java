@@ -41,6 +41,7 @@ import com.amap.api.maps.model.BitmapDescriptor;
 import com.amap.api.maps.model.CameraPosition;
 import com.amap.api.maps.model.Circle;
 import com.amap.api.maps.model.CircleOptions;
+import com.amap.api.maps.model.CustomMapStyleOptions;
 import android.location.Location;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -838,6 +839,17 @@ public final class MainActivity extends Activity implements
                 : ("night".equals(theme) || ("auto".equals(theme) && dark))
                     ? AMap.MAP_TYPE_NIGHT : AMap.MAP_TYPE_NORMAL;
         map.setMapType(type);
+        if(MapStyleImporter.installed(this) && type==AMap.MAP_TYPE_NORMAL) {
+            java.io.File dir=MapStyleImporter.directory(this);
+            CustomMapStyleOptions style=new CustomMapStyleOptions()
+                .setEnable(true)
+                .setStyleDataPath(new java.io.File(dir,"style.data").getAbsolutePath());
+            java.io.File extra=new java.io.File(dir,"style_extra.data");
+            java.io.File textures=new java.io.File(dir,"textures.zip");
+            if(extra.exists())style.setStyleExtraPath(extra.getAbsolutePath());
+            if(textures.exists())style.setStyleTexturePath(textures.getAbsolutePath());
+            map.setCustomMapStyle(style);
+        } else map.setCustomMapStyle(new CustomMapStyleOptions().setEnable(false));
         map.setTrafficEnabled(p.getBoolean("traffic", true));
         boolean threed = p.getBoolean("view3d", true);
         map.showBuildings(threed && p.getBoolean("buildings",true));
