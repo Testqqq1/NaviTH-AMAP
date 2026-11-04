@@ -184,7 +184,30 @@ public final class NavSdkBridge {
             double lat=((Number)point.getClass().getMethod("getLatitude").invoke(point)).doubleValue();
             double lon=((Number)point.getClass().getMethod("getLongitude").invoke(point)).doubleValue();
             if(!Double.isFinite(lat)||!Double.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)return;
-            com.navith.amap.car.TripStore.setLocation(context,new LatLng(lat,lon));
+            android.location.Location fix=new android.location.Location("amap_navigation");
+            fix.setLatitude(lat);fix.setLongitude(lon);
+            long now=System.currentTimeMillis();
+            Object time=location.getClass().getMethod("getTime").invoke(location);
+            long stamp=time instanceof Number?((Number)time).longValue():now;
+            if(stamp>0L && Math.abs(now-stamp)>30000L)return;
+            fix.setTime(stamp>0L?stamp:now);
+            float accuracy=((Number)location.getClass().getMethod("getAccuracy")
+                .invoke(location)).floatValue();
+            if(Float.isFinite(accuracy) && accuracy>0 && accuracy<500f)
+                fix.setAccuracy(accuracy);
+            // AMAP Navigation reports km/h; Android Location expects m/s.
+            float speedKmh=((Number)location.getClass().getMethod("getSpeed")
+                .invoke(location)).floatValue();
+            if(Float.isFinite(speedKmh) && speedKmh>=0 && speedKmh<350f)
+                fix.setSpeed(speedKmh/3.6f);
+            float bearing=((Number)location.getClass().getMethod("getBearing")
+                .invoke(location)).floatValue();
+            int type=((Number)location.getClass().getMethod("getLocationType")
+                .invoke(location)).intValue();
+            if(type==0 && Float.isFinite(bearing) && bearing>=0f &&
+                bearing<=360f && fix.hasSpeed() && fix.getSpeed()>1.5f)
+                fix.setBearing(bearing);
+            com.navith.amap.car.TripStore.setLocation(context,fix);
         }catch(ReflectiveOperationException ex){
             Log.d("NaviTH/Navigation","Navi SDK location callback not available");
         }
