@@ -268,6 +268,21 @@ public final class NavSdkBridge {
             setOptionalBoolean(params, config, "setUseInnerVoice", true);
             setOptionalBoolean(params, config, "setTrafficEnabled", true);
             setOptionalBoolean(params, config, "setNeedCalculateRouteWhenPresent", true);
+            setOptionalBoolean(params, config, "setNeedDestroyDriveManagerInstanceWhenNaviExit", true);
+            android.content.SharedPreferences views=activity.getSharedPreferences("navith_view",Context.MODE_PRIVATE);
+            // Documented SDK mapping: 1=north-up, 2=car-heading-up.
+            try { params.getMethod("setCarDirectionMode",Context.class,int.class)
+                .invoke(config,activity.getApplicationContext(),views.getBoolean("view3d",true)?2:1); }
+            catch(NoSuchMethodException ignored) { /* version-dependent */ }
+            try { params.getMethod("setScaleAutoChangeEnable",Context.class,boolean.class)
+                .invoke(config,activity.getApplicationContext(),true); }
+            catch(NoSuchMethodException ignored) { /* SDK controls its own zoom */ }
+            try {
+                String theme=views.getString("theme","auto");
+                int mode="day".equals(theme)?1:("night".equals(theme)?2:0);
+                params.getMethod("setDayAndNightMode",Context.class,int.class)
+                    .invoke(config,activity.getApplicationContext(),mode);
+            }catch(NoSuchMethodException ignored) { }
             try { params.getMethod("setNaviMode",int.class).invoke(config,1); }
             catch(NoSuchMethodException ignored){ /* default is GPS navigation */ }
             setOptionalBoolean(params, config, "setShowExitNaviDialog", true);
