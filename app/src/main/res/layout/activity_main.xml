@@ -120,13 +120,40 @@
             android:textSize="12sp" />
         <Button
             android:id="@+id/mapTypeButton"
-            android:layout_width="62dp"
-            android:layout_height="56dp"
-            android:layout_marginTop="8dp"
+            android:layout_width="68dp"
+            android:layout_height="48dp"
+            android:layout_marginTop="6dp"
             android:background="@drawable/bg_card"
-            android:text="ชั้นแผนที่"
+            android:text="ธีมแผนที่"
             android:textColor="#0B2832"
             android:textSize="10sp" />
+        <Button
+            android:id="@+id/viewButton"
+            android:layout_width="68dp"
+            android:layout_height="48dp"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_card"
+            android:text="3D"
+            android:textColor="#087F76"
+            android:textSize="12sp" />
+        <Button
+            android:id="@+id/trafficButton"
+            android:layout_width="68dp"
+            android:layout_height="48dp"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_card"
+            android:text="จราจร"
+            android:textColor="#0B2832"
+            android:textSize="11sp" />
+        <Button
+            android:id="@+id/settingsButton"
+            android:layout_width="68dp"
+            android:layout_height="48dp"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_card"
+            android:text="ตั้งค่า ⚙"
+            android:textColor="#0B2832"
+            android:textSize="11sp" />
     </LinearLayout>
 
     <LinearLayout
@@ -138,6 +165,15 @@
         android:elevation="10dp"
         android:orientation="vertical"
         android:padding="16dp">
+        <TextView
+            android:id="@+id/speedText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="6dp"
+            android:text="◎ กำลังระบุตำแหน่ง GPS"
+            android:textColor="#087F76"
+            android:textStyle="bold"
+            android:textSize="12sp" />
         <TextView
             android:id="@+id/statusText"
             android:layout_width="match_parent"
