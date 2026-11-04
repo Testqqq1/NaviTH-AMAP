@@ -122,10 +122,13 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         if (hasLocationPermission()) try {
             locationManager=(LocationManager)c.getSystemService(Context.LOCATION_SERVICE);
             if (locationManager != null) {
+                // Use both providers: network gives a quick initial fix, GPS refines it.
+                if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))
+                    locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,
+                        2500L,10f,locationListener,Looper.getMainLooper());
                 if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER))
-                    locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,1500L,5f,locationListener,Looper.getMainLooper());
-                else if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))
-                    locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,5000L,20f,locationListener,Looper.getMainLooper());
+                    locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
+                        1000L,2f,locationListener,Looper.getMainLooper());
             }
         } catch (SecurityException e) { Log.w(TAG,"Location permission not available in car session",e); }
     }
@@ -149,7 +152,16 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
                       :tr("ไป ","To ")+dest+" · "+summary));
         Action search=new Action.Builder().setTitle(tr("ค้นหา","Search")).setOnClickListener(() ->
                 getScreenManager().push(new NaviSearchScreen(getCarContext(),this))).build();
-        ActionStrip.Builder actionBar=new ActionStrip.Builder().addAction(search);
+        Action locate=new Action.Builder().setTitle(tr("ตำแหน่ง","Locate"))
+            .setOnClickListener(()->recenterCarMap()).build();
+        Action view=new Action.Builder().setTitle(viewPrefs.getBoolean("view3d",true)?"2D":"3D")
+            .setOnClickListener(()->{
+                viewPrefs.edit().putBoolean("view3d",!viewPrefs.getBoolean("view3d",true)).apply();
+                applyCarMapStyle();
+                invalidate();
+            }).build();
+        ActionStrip.Builder actionBar=new ActionStrip.Builder()
+            .addAction(search).addAction(locate).addAction(view);
         if (!dest.isEmpty()) {
             actionBar.addAction(new Action.Builder().setTitle(tr("ล้างเส้นทาง","Clear route"))
                     .setOnClickListener(() -> TripStore.clearDestination(getCarContext())).build());
@@ -285,6 +297,14 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
                 new CameraPosition.Builder(map.getCameraPosition()).tilt(third ? 55f : 0f).build()));
     }
 
+    private void recenterCarMap() {
+        if(map==null)return;
+        LatLng location=TripStore.location(getCarContext());
+        if(location==null || !TripStore.hasRecentLocation(getCarContext()))return;
+        float zoom=Math.max(15f,Math.min(18f,viewPrefs.getFloat("zoom",16f)));
+        map.animateCamera(CameraUpdateFactory.newLatLngZoom(location,zoom));
+    }
+
     private void updateLocationMarker() {
         if (map==null) return;
         LatLng at=TripStore.location(getCarContext());
@@ -309,7 +329,7 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
                 .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
         if (dest!=null) map.addMarker(new MarkerOptions().position(dest).title(TripStore.destinationName(getCarContext())));
         if (path.size()>=2) {
-            map.addPolyline(new PolylineOptions().addAll(path).width(15f).color(0xff00b59e).zIndex(2));
+            map.addPolyline(new PolylineOptions().addAll(path).width(7f).color(0xff087f73).zIndex(2));
             LatLngBounds.Builder bounds=new LatLngBounds.Builder();
             for(LatLng p:path) bounds.include(p);
             if (from!=null) bounds.include(from);
