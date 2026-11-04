@@ -1251,12 +1251,14 @@ public final class MainActivity extends Activity implements
             .format(new Date(System.currentTimeMillis()+Math.max(0L,seconds)*1000L));
         TextView etaText=findViewById(R.id.etaText);
         if(etaText!=null)etaText.setText(NaviLocale.text(this,"คาดว่าจะถึงประมาณ ","Estimated arrival ")+eta
-            +NaviLocale.text(this," • ตัวอย่างเส้นทาง ยังไม่มีเสียงนำทาง"," • Route preview, no turn-by-turn guidance"));
+            +NaviLocale.text(this," • ตัวอย่างเส้นทาง; ระบบเสียง Mapbox ยังเป็นรุ่นทดสอบ",
+                " • Route preview; Mapbox voice remains experimental"));
         routeSummary.setText(mode + "  •  " + km + "  •  " + time);
         ((Button)findViewById(R.id.routeButton)).setText(R.string.change_route);
         hasRoutePreview=true;
         boolean canStart=(NavSdkBridge.isInstalled() ||
-            (selectedMapboxRoute!=null && MapboxDirectionsClient.configured(this))) &&
+            (selectedMapboxRoute!=null && selectedMapboxRoute.steps.size()>1 &&
+                MapboxDirectionsClient.configured(this))) &&
             modeGroup.getCheckedRadioButtonId()==R.id.modeDrive;
         findViewById(R.id.startNavigationButton).setVisibility(canStart?View.VISIBLE:View.GONE);
         Button routeAction=findViewById(R.id.routeButton);
@@ -2236,12 +2238,15 @@ public final class MainActivity extends Activity implements
         boolean launching="planning".equals(NaviGuidanceStore.phase(this));
         b.setEnabled(!launching);
         b.setVisibility((NavSdkBridge.isInstalled() ||
-            (selectedMapboxRoute!=null && MapboxDirectionsClient.configured(this))) &&
+            (selectedMapboxRoute!=null && selectedMapboxRoute.steps.size()>1 &&
+                MapboxDirectionsClient.configured(this))) &&
             (running || hasRoutePreview) &&
             modeGroup.getCheckedRadioButtonId()==R.id.modeDrive ? View.VISIBLE:View.GONE);
         b.setText(launching ? tr("กำลังเริ่มนำทาง…","Starting navigation…") :
             running ? tr("หยุดนำทาง","Stop navigation") :
-            tr("เริ่มนำทาง","Start navigation"));
+            selectedMapboxRoute!=null ?
+                tr("เริ่มนำทาง (ทดลอง)","Start experimental guidance") :
+                tr("เริ่มนำทาง (AMAP ทดลอง)","Start AMAP test navigation"));
         b.setContentDescription(b.getText());
     }
     private void showNavigationStateOnce() {
