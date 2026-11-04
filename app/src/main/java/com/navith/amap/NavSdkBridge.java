@@ -32,10 +32,11 @@ public final class NavSdkBridge {
 
     public static boolean isInstalled() {
         try {
-            Class.forName("com.amap.api.navi.AMapNavi");
-            Class.forName("com.amap.api.navi.AmapNaviPage");
-            Class.forName("com.amap.api.navi.AmapNaviParams");
-            Class.forName("com.amap.api.maps.model.Poi");
+            ClassLoader loader=NavSdkBridge.class.getClassLoader();
+            Class.forName("com.amap.api.navi.AMapNavi",false,loader);
+            Class.forName("com.amap.api.navi.AmapNaviPage",false,loader);
+            Class.forName("com.amap.api.navi.AmapNaviParams",false,loader);
+            Class.forName("com.amap.api.maps.model.Poi",false,loader);
             return true;
         } catch (Throwable unavailable) {
             return false;
@@ -50,11 +51,10 @@ public final class NavSdkBridge {
                 "ติดตั้ง NaviTH Navigation Test APK ที่ Build ด้วยชุด AMAP Navigation SDK แทนรุ่น Maps-only");
             return;
         }
-        if (activity.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
-                && activity.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+        if (activity.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             show(activity,
                 "ต้องอนุญาตตำแหน่ง",
-                "กรุณาอนุญาตตำแหน่งแบบแม่นยำก่อนใช้งานการนำทาง");
+                "การนำทางด้วย GPS ต้องเปิดสิทธิ์ตำแหน่งแบบแม่นยำจากการตั้งค่า Android ก่อน");
             return;
         }
         if (!activity.getSharedPreferences(CONSENT, Context.MODE_PRIVATE).getBoolean("accepted", false)) {
@@ -110,6 +110,21 @@ public final class NavSdkBridge {
                     if("toString".equals(callback))return "NaviTH-AMAP-NavListener";
                     try {
                         switch(callback) {
+                            case "onInitNaviFailure":
+                                NaviGuidanceStore.failed(context,"เริ่ม Navigation Engine ไม่สำเร็จ");
+                                break;
+                            case "onCalculateRouteSuccess":
+                                NaviGuidanceStore.planned(context);
+                                break;
+                            case "onCalculateRouteFailure":
+                                int code=(args!=null && args.length>0 && args[0]!=null)
+                                    ?asInt(args[0],"getErrorCode"):-1;
+                                NaviGuidanceStore.failed(context,"คำนวณเส้นทางไม่สำเร็จ · AMAP "+code);
+                                break;
+                            case "onReCalculateRouteForYaw":
+                            case "onReCalculateRouteForTrafficJam":
+                                NaviGuidanceStore.rerouting(context);
+                                break;
                             case "onStartNavi":
                                 NaviGuidanceStore.started(context);
                                 break;
@@ -124,9 +139,16 @@ public final class NavSdkBridge {
                                 }
                                 break;
                             case "onArriveDestination":
+                                NaviGuidanceStore.arrived(context);
+                                break;
                             case "onEndEmulatorNavi":
                             case "onStopNavi":
                                 NaviGuidanceStore.stopped(context);
+                                break;
+                            case "onLocationChange":
+                                if(args!=null && args.length>0 && args[0]!=null) {
+                                    shareNavigationPosition(context,args[0]);
+                                }
                                 break;
                         }
                     } catch(Exception ex) {
@@ -148,6 +170,33 @@ public final class NavSdkBridge {
     private static int asInt(Object obj,String name) {
         try {Object v=obj.getClass().getMethod(name).invoke(obj);return v instanceof Number?((Number)v).intValue():-1;}
         catch(Exception e){return -1;}
+    }
+
+    private static void shareNavigationPosition(Context context,Object location) {
+        try {
+            Object point=location.getClass().getMethod("getCoord").invoke(location);
+            if(point==null)return;
+            double lat=((Number)point.getClass().getMethod("getLatitude").invoke(point)).doubleValue();
+            double lon=((Number)point.getClass().getMethod("getLongitude").invoke(point)).doubleValue();
+            if(!Double.isFinite(lat)||!Double.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)return;
+            com.navith.amap.car.TripStore.setLocation(context,new LatLng(lat,lon));
+        }catch(ReflectiveOperationException ex){
+            Log.d("NaviTH/Navigation","Navi SDK location callback not available");
+        }
+    }
+
+    /** Exit the official component; never fake the navigation state. */
+    public static void stopNavigation(Activity activity) {
+        if(!isInstalled())return;
+        try {
+            Class<?> page=Class.forName("com.amap.api.navi.AmapNaviPage");
+            Object singleton=page.getMethod("getInstance").invoke(null);
+            page.getMethod("exitRouteActivity").invoke(singleton);
+            NaviGuidanceStore.stopped(activity.getApplicationContext());
+        }catch(Throwable e){
+            Log.e("NaviTH/Navigation","Cannot exit official component",e);
+            show(activity,"หยุดนำทางไม่ได้","กรุณากลับไปที่หน้าของ AMAP Navigation และกดยุติการนำทาง");
+        }
     }
 
     private static void tryStart(Activity activity, LatLng destination, String name) {
@@ -179,7 +228,8 @@ public final class NavSdkBridge {
             Class<?> navType = Class.forName("com.amap.api.navi.AmapNaviType");
             Object driving = navType.getField("DRIVER").get(null);
             Class<?> pageType = Class.forName("com.amap.api.navi.AmapPageType");
-            Object planRoute = pageType.getField("ROUTE").get(null);
+            // NAVI opens the vendor's turn-by-turn activity, not its ROUTE preview.
+            Object planRoute = pageType.getField("NAVI").get(null);
             Class<?> params = Class.forName("com.amap.api.navi.AmapNaviParams");
             Constructor<?> constructor = params.getConstructor(
                 poiType, List.class, poiType, navType, pageType);
@@ -189,6 +239,10 @@ public final class NavSdkBridge {
             // navigation component; data availability is determined by AMAP.
             setOptionalBoolean(params, config, "setUseInnerVoice", true);
             setOptionalBoolean(params, config, "setTrafficEnabled", true);
+            setOptionalBoolean(params, config, "setNeedCalculateRouteWhenPresent", true);
+            try { params.getMethod("setNaviMode",int.class).invoke(config,1); }
+            catch(NoSuchMethodException ignored){ /* default is GPS navigation */ }
+            setOptionalBoolean(params, config, "setShowExitNaviDialog", true);
             setOptionalBoolean(params, config, "setShowCrossImage", true);
             setOptionalBoolean(params, config, "setSecondActionVisible", true);
             setOptionalBoolean(params, config, "setMultipleRouteNaviMode", true);
@@ -196,9 +250,29 @@ public final class NavSdkBridge {
             Class<?> page = Class.forName("com.amap.api.navi.AmapNaviPage");
             Object singleton = page.getMethod("getInstance").invoke(null);
             Class<?> callback = Class.forName("com.amap.api.navi.INaviInfoCallback");
+            Object pageCallback=Proxy.newProxyInstance(callback.getClassLoader(),
+                new Class<?>[]{callback},(proxy,method,args)->{
+                    switch(method.getName()){
+                        case "onExitPage":
+                            NaviGuidanceStore.stopped(activity.getApplicationContext());break;
+                        case "onGetNavigationText":
+                            // AMAP's own voice engine handles announcements; don't duplicate TTS.
+                            break;
+                        case "onLocationChange":
+                            if(args!=null && args.length>0 && args[0]!=null)
+                                shareNavigationPosition(activity.getApplicationContext(),args[0]);
+                            break;
+                        case "hashCode":return System.identityHashCode(proxy);
+                        case "equals":return args!=null && proxy==args[0];
+                        case "toString":return "NaviTH-PageCallback";
+                    }
+                    return null;
+                });
+            NaviGuidanceStore.launching(activity.getApplicationContext());
             page.getMethod("showRouteActivity", Context.class, params, callback)
-                .invoke(singleton, activity, config, null);
+                .invoke(singleton, activity, config, pageCallback);
         } catch (Throwable failure) {
+            NaviGuidanceStore.failed(activity.getApplicationContext(),"เปิด Navigation SDK ไม่สำเร็จ");
             android.util.Log.e("NaviTH/Navigation", "Navigation start failed", failure);
             show(activity, "ยังเริ่มการนำทางไม่ได้",
                 "ตรวจสิทธิ์ AMAP Navigation ของ API Key, SHA-1, ความพร้อมของพื้นที่และบริการ SDK " +
