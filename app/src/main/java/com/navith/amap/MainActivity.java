@@ -1422,6 +1422,16 @@ public final class MainActivity extends Activity implements
             homePanel.getVisibility()==View.VISIBLE;
         top.setVisibility(onHome && bottom?View.GONE:View.VISIBLE);
         homeSearch.setVisibility(bottom?View.VISIBLE:View.GONE);
+        boolean landscape=getResources().getConfiguration().orientation==
+            Configuration.ORIENTATION_LANDSCAPE;
+        View secondRow=findViewById(R.id.homeSecondaryModes);
+        View shortcutRow=findViewById(R.id.homeShortcutRow);
+        if(secondRow!=null)secondRow.setVisibility(landscape?View.GONE:View.VISIBLE);
+        if(shortcutRow!=null)shortcutRow.setVisibility(landscape?View.GONE:View.VISIBLE);
+        if(landscape && homeExpanded!=null && homeExpanded.getVisibility()==View.VISIBLE) {
+            homeExpanded.setVisibility(View.GONE);
+            homeOpen=false;
+        }
     }
 
     private void applySystemChromePreferences() {
