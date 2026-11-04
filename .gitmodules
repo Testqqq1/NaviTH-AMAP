@@ -42,3 +42,8 @@
 	path = third_party/amap-web/amap-loca-types
 	url = https://github.com/AMap-Web/amap-loca-types.git
 	branch = main
+
+[submodule "third_party/flutter/flutter_amap"]
+	path = third_party/flutter/flutter_amap
+	url = https://github.com/best-flutter/flutter_amap.git
+	branch = master

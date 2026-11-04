@@ -1,4 +1,4 @@
-name: Prepare AMap-Web source workspace
+name: Prepare NaviTH map reference workspace
 
 on:
   workflow_dispatch:
@@ -6,7 +6,9 @@ on:
     paths:
       - '.gitmodules'
       - 'third_party/amap-web/**'
+      - 'third_party/flutter/**'
       - 'tools/install-amap-web.sh'
+      - 'tools/install-map-references.sh'
       - '.github/workflows/amap-web-workspace.yml'
 
 permissions:
@@ -17,7 +19,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - name: Check out NaviTH and pinned AMap-Web submodules
+      - name: Check out NaviTH and pinned reference submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -42,17 +44,28 @@ jobs:
           done
           printf '%s\n' 'amap-loca-types- NO_COMMITS https://github.com/AMap-Web/amap-loca-types-' |
             tee -a dist/AMap-Web-commits.txt
-          cp third_party/amap-web/README.md dist/README.md
-      - name: Package 9 source repositories without Git metadata
+          cp third_party/amap-web/README.md dist/AMap-Web-README.md
+      - name: Verify Flutter AMap reference repository
         shell: bash
         run: |
           set -euo pipefail
-          tar --exclude='*/.git' -czf dist/AMap-Web-9-repositories.tar.gz third_party/amap-web
+          folder='third_party/flutter/flutter_amap'
+          test -f "$folder/pubspec.yaml"
+          test -f "$folder/README.md"
+          echo "best-flutter/flutter_amap $(git -C "$folder" rev-parse HEAD) https://github.com/best-flutter/flutter_amap" | tee -a dist/Reference-commits.txt
+          cp third_party/flutter/README.md dist/Flutter-README.md
+      - name: Package 10 source repositories without Git metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp dist/AMap-Web-commits.txt dist/AMap-Web-source-commits.txt
+          cat dist/AMap-Web-commits.txt >> dist/Reference-commits.txt
+          tar --exclude='*/.git' -czf dist/NaviTH-10-reference-repositories.tar.gz third_party/amap-web third_party/flutter
           ls -lh dist/
       - name: Upload source snapshot
         uses: actions/upload-artifact@v4
         with:
-          name: AMap-Web-repositories-snapshot
+          name: NaviTH-map-reference-sources
           path: dist/
           if-no-files-found: error
           retention-days: 14
