@@ -23,6 +23,7 @@ import android.widget.Switch;
 import android.widget.EditText;
 import android.text.InputType;
 import android.widget.TextView;
+import android.widget.ImageView;
 import android.widget.Toast;
 
 import com.navith.amap.car.TripStore;
@@ -175,7 +176,6 @@ public final class SettingsActivity extends Activity {
                 toggle(tx("การจราจรสด","Live traffic"),
                     tx("เมื่อ AMAP มีข้อมูลในพื้นที่","Where AMAP provides coverage"),"traffic",true);
                 toggle(tx("อาคาร 3D","3D buildings"),null,"buildings",true);
-                line(tx("สัญลักษณ์ตำแหน่ง","Position icon"),null,"›",()->chooseMarker());
                 break;
             case "navigation":
                 section(tx("การวางเส้นทาง","Route preferences"));groupStart();
@@ -186,6 +186,17 @@ public final class SettingsActivity extends Activity {
                 line(tx("หน่วยความเร็ว","Speed units"),null,
                     prefs.getBoolean("mph",false)?"mph":"km/h",
                     ()->{prefs.edit().putBoolean("mph",!prefs.getBoolean("mph",false)).apply();build();});
+                section(tx("ไอคอนและมุมกล้อง","Marker & camera"));groupStart();
+                line(tx("ไอคอนตำแหน่ง","Position icon"),
+                    tx("ใช้เหมือนกันบนมือถือและ Android Auto","Shared by phone and Android Auto"),
+                    NavigationMarkerFactory.label(this,prefs.getInt("vehicle_icon",6)),
+                    ()->chooseMarker());
+                line(tx("มุมมองแผนที่","Map perspective"),null,
+                    prefs.getBoolean("view3d",true)?"3D":"2D",()->pickMode());
+                toggle(tx("ความลึกและเงาของไอคอน","Marker depth and shadow"),
+                    tx("ภาพเวกเตอร์ 2.5D ติดระนาบแผนที่ ไม่ใช่โมเดล 3D",
+                       "Ground-aligned 2.5D rendering, not a 3D mesh"),
+                    "marker_perspective",true);
                 section(tx("เสียงและการนำทางจริง","Voice & guidance"));groupStart();
                 line(tx("สถานะระบบนำทาง","Navigation availability"),
                     tx("การนำทางจริงต้องใช้ Navigation Test SDK",
@@ -453,21 +464,57 @@ public final class SettingsActivity extends Activity {
             .show();
     }
 
+    /** Preview the same AMAP-ground bitmap that the map uses (no emoji/stock art). */
     private void chooseMarker() {
-        String[] opts={tx("รถเก๋ง","Sedan"),tx("แฮทช์แบ็ค","Hatchback"),
-            tx("รถตู้","Van"),"SUV",tx("กระบะ","Pickup"),tx("รถสปอร์ต","Sports car"),
-            tx("ลูกศร","Arrow"),tx("เลือกรูปของฉัน","Choose my image")};
-        new AlertDialog.Builder(this).setTitle(tx("รูปตำแหน่งบนแผนที่ (2D)","Position marker (2D)"))
-            .setItems(opts,(d,i)->{
-                if(i==7){
+        ScrollView scroll=new ScrollView(this);
+        LinearLayout all=new LinearLayout(this);
+        all.setOrientation(LinearLayout.VERTICAL);
+        all.setPadding(dp(16),dp(8),dp(16),dp(12));
+        scroll.addView(all);
+        TextView intro=label(tx("แตะเพื่อเลือก ไอคอนจะปรับตามมุมเอียงของแผนที่",
+            "Select a style. The icon follows the map's tilt and heading."),
+            14,secondary,false);
+        intro.setPadding(0,0,0,dp(8));
+        all.addView(intro);
+        final AlertDialog dialog=new AlertDialog.Builder(this)
+            .setTitle(tx("ไอคอนนำทาง","Navigation icon"))
+            .setView(scroll)
+            .setNegativeButton(tx("ปิด","Close"),null)
+            .create();
+        final int selected=prefs.getInt("vehicle_icon",6);
+        for(int kind:new int[]{6,8,5,0,1,3,2,4,9,7}){
+            LinearLayout row=new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setMinHeight(dp(72));
+            row.setPadding(dp(8),dp(5),dp(8),dp(5));
+            if(kind==selected)row.setBackground(surface(getColor(R.color.nav_soft_accent),16));
+            ImageView preview=new ImageView(this);
+            preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            preview.setImageBitmap(NavigationMarkerFactory.preview(this,kind,
+                prefs.getBoolean("marker_perspective",true)));
+            row.addView(preview,new LinearLayout.LayoutParams(dp(64),dp(64)));
+            TextView item=label(NavigationMarkerFactory.label(this,kind),16,primary,
+                kind==selected);
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);
+            lp.leftMargin=dp(12);row.addView(item,lp);
+            TextView selection=label(kind==selected?"✓":"",18,accent,true);
+            row.addView(selection,new LinearLayout.LayoutParams(dp(28),dp(48)));
+            row.setClickable(true);row.setFocusable(true);
+            row.setContentDescription(NavigationMarkerFactory.label(this,kind));
+            row.setOnClickListener(v->{
+                if(kind==NavigationMarkerFactory.OWN_IMAGE) {
                     Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT);
                     pick.setType("image/*");pick.addCategory(Intent.CATEGORY_OPENABLE);
                     startActivityForResult(pick,PICK_MARKER);
-                }else{
-                    prefs.edit().putInt("vehicle_icon",i).apply();
+                } else {
+                    prefs.edit().putInt("vehicle_icon",kind).apply();
                     build();
                 }
-            }).show();
+                dialog.dismiss();
+            });
+            all.addView(row);
+        }
+        dialog.show();
     }
 
     @Override protected void onActivityResult(int request,int result,Intent data){
