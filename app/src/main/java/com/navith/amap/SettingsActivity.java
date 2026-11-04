@@ -203,7 +203,7 @@ public final class SettingsActivity extends Activity {
                     tx("เลือกไฟล์รูปภาพจากโทรศัพท์","Select a photo from your device"),
                     "marker_custom_hint",false);
                 line(tx("ไอคอนตำแหน่ง","Position icon"),null,
-                    NavigationMarkerFactory.label(this,prefs.getInt("vehicle_icon",6)),()->chooseMarker());
+                    NavigationMarkerFactory.label(this,prefs.getInt("vehicle_icon",8)),()->chooseMarker());
                 toggle(tx("แสดงแผนที่ภายในอาคาร","Indoor maps"),
                     tx("ใช้ได้เฉพาะเมื่อ AMAP มีข้อมูลพื้นที่นั้น","Only if AMAP covers the building"),
                     "indoor",true);
@@ -259,14 +259,14 @@ public final class SettingsActivity extends Activity {
                 section(tx("ไอคอนและมุมกล้อง","Marker & camera"));groupStart();
                 line(tx("ไอคอนตำแหน่ง","Position icon"),
                     tx("ใช้เหมือนกันบนมือถือและ Android Auto","Shared by phone and Android Auto"),
-                    NavigationMarkerFactory.label(this,prefs.getInt("vehicle_icon",6)),
+                    NavigationMarkerFactory.label(this,prefs.getInt("vehicle_icon",8)),
                     ()->chooseMarker());
                 line(tx("มุมมองแผนที่","Map perspective"),null,
                     prefs.getBoolean("view3d",true)?"3D":"2D",()->pickMode());
                 toggle(tx("ความลึกและเงาของไอคอน","Marker depth and shadow"),
                     tx("ภาพเวกเตอร์ 2.5D ติดระนาบแผนที่ ไม่ใช่โมเดล 3D",
                        "Ground-aligned 2.5D rendering, not a 3D mesh"),
-                    "marker_perspective",true);
+                    "marker_perspective",false);
                 section(tx("เสียงระหว่างนำทาง","Guidance voice"));groupStart();
                 segmented(new String[]{tx("อัจฉริยะ","Smart"),tx("ละเอียด","Detailed"),tx("กระชับ","Concise"),tx("ปิดเสียง","Mute")},
                     "voice_style",new String[]{"smart","detailed","concise","mute"},"smart");
@@ -506,7 +506,7 @@ public final class SettingsActivity extends Activity {
                         pick.addCategory(Intent.CATEGORY_OPENABLE);
                         startActivityForResult(pick,PICK_MARKER);
                     }
-                } else prefs.edit().putBoolean(key,false).putInt("vehicle_icon",6).apply();
+                } else prefs.edit().putBoolean(key,false).putInt("vehicle_icon",8).apply();
             } else prefs.edit().putBoolean(key,c).apply();
         });
         row.addView(sw);
@@ -671,7 +671,7 @@ public final class SettingsActivity extends Activity {
             .setView(scroll)
             .setNegativeButton(tx("ปิด","Close"),null)
             .create();
-        final int selected=prefs.getInt("vehicle_icon",6);
+        final int selected=prefs.getInt("vehicle_icon",8);
         for(int kind:new int[]{6,8,5,0,1,3,2,4,9,7}){
             LinearLayout row=new LinearLayout(this);
             row.setGravity(Gravity.CENTER_VERTICAL);
@@ -681,7 +681,7 @@ public final class SettingsActivity extends Activity {
             ImageView preview=new ImageView(this);
             preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
             preview.setImageBitmap(NavigationMarkerFactory.preview(this,kind,
-                prefs.getBoolean("marker_perspective",true)));
+                prefs.getBoolean("marker_perspective",false)));
             row.addView(preview,new LinearLayout.LayoutParams(dp(64),dp(64)));
             TextView item=label(NavigationMarkerFactory.label(this,kind),16,primary,
                 kind==selected);
