@@ -458,16 +458,26 @@ public final class MainActivity extends Activity implements
             searchInput.setError("กรอกคำค้นหาก่อน");
             return;
         }
-        hideKeyboard();
-        resultsPanel.setVisibility(View.GONE);
-        status("กำลังค้นหา “" + term + "”…");
+        searchResultsHeading.setText(getString(R.string.search_results));
+        resultsList.removeAllViews();
+        TextView busy=new TextView(this);
+        busy.setText(NaviLocale.text(this,"กำลังค้นหา…","Searching…"));
+        busy.setTextColor(getColor(R.color.nav_secondary));
+        busy.setPadding(dp(14),dp(18),dp(14),dp(18));
+        resultsList.addView(busy);
+        resultsPanel.setVisibility(View.VISIBLE);
         try {
             // Create a new PoiSearch every time, so old results aren't coupled to the new query.
             PoiSearch.Query q = new PoiSearch.Query(term, "", "");
             q.setPageSize(10);
             q.setPageNum(1);
             PoiSearch search = new PoiSearch(this, q);
-            search.setOnPoiSearchListener(this);
+            search.setOnPoiSearchListener(new PoiSearch.OnPoiSearchListener() {
+                @Override public void onPoiSearched(PoiResult result,int code) {
+                    renderPoiResults(term,result,code);
+                }
+                @Override public void onPoiItemSearched(PoiItem item,int code) {}
+            });
             activePoiSearch = search;
             search.searchPOIAsyn();
         } catch (Exception e) {
@@ -475,45 +485,65 @@ public final class MainActivity extends Activity implements
         }
     }
 
-    @Override
-    public void onPoiSearched(PoiResult result, int code) {
+    @Override public void onPoiSearched(PoiResult result, int code) {
+        renderPoiResults(searchInput.getText().toString().trim(),result,code);
+    }
+
+    private void renderPoiResults(String term,PoiResult result,int code) {
         runOnUiThread(() -> {
-            if (!initialized || isFinishing()) return;
-            if (code != 1000 || result == null || result.getPois() == null || result.getPois().isEmpty()) {
-                resultsPanel.setVisibility(View.GONE);
-                status(code == 1000 ? "ไม่พบสถานที่ ลองเพิ่มจังหวัดหรือคำค้นหา" : "ค้นหาล้มเหลว (รหัส " + code + ")");
+            if(!initialized || isFinishing() || searchOverlay.getVisibility()!=View.VISIBLE) return;
+            if(!term.equals(searchInput.getText().toString().trim())) return;
+            resultsList.removeAllViews();
+            if(code!=1000 || result==null || result.getPois()==null || result.getPois().isEmpty()) {
+                TextView msg=new TextView(this);
+                msg.setPadding(dp(16),dp(20),dp(16),dp(20));
+                msg.setTextColor(getColor(R.color.nav_secondary));
+                msg.setText(code==1000?NaviLocale.text(this,"ไม่พบสถานที่ ลองเปลี่ยนคำค้นหา","No places found")
+                      :NaviLocale.text(this,"ค้นหาไม่สำเร็จ • รหัส ","Search failed • code ")+code);
+                resultsList.addView(msg);
                 return;
             }
-            resultsList.removeAllViews();
-            int count = 0;
-            for (PoiItem item : result.getPois()) {
-                if (item.getLatLonPoint() == null) continue;
-                ++count;
+            int count=0;
+            for(PoiItem item:result.getPois()){
+                if(item.getLatLonPoint()==null)continue;
                 addResultRow(item);
-                if (count == 6) break; // Limit height of overlay so map remains usable.
+                if(++count==10)break;
             }
-            resultsPanel.setVisibility(View.VISIBLE);
-            status("พบสถานที่ " + result.getPois().size() + " รายการ • เลือกจากผลค้นหาด้านบน");
         });
     }
 
     private void addResultRow(PoiItem item) {
-        TextView row = new TextView(this);
-        String address = item.getSnippet() == null ? "" : item.getSnippet();
-        row.setText(item.getTitle() + (address.isEmpty() ? "" : "\n" + address));
-        row.setTextSize(14);
-        row.setTextColor(Color.rgb(12, 50, 56));
+        addResultItem(item.getTitle(),item.getSnippet(),toLatLng(item.getLatLonPoint()),false);
+    }
+
+    private void addResultItem(String name,String description,LatLng position,boolean favorite) {
+        LinearLayout row=new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(14), dp(8), dp(12), dp(8));
-        row.setMinHeight(dp(52));
-        row.setOnClickListener(v -> {
-            chooseDestination(toLatLng(item.getLatLonPoint()), item.getTitle());
-            resultsPanel.setVisibility(View.GONE);
-        });
+        row.setPadding(dp(12),dp(6),dp(10),dp(6));
+        row.setMinimumHeight(dp(64));
+        TextView dot=new TextView(this);
+        dot.setText(favorite?"★":"⌖");
+        dot.setTextSize(22);
+        dot.setGravity(Gravity.CENTER);
+        dot.setTextColor(getColor(R.color.nav_primary));
+        row.addView(dot,new LinearLayout.LayoutParams(dp(46),dp(48)));
+        LinearLayout labels=new LinearLayout(this);labels.setOrientation(LinearLayout.VERTICAL);
+        row.addView(labels,new LinearLayout.LayoutParams(0,-2,1f));
+        TextView label=new TextView(this);
+        label.setText(name);label.setTextColor(getColor(R.color.nav_text));
+        label.setTextSize(16);label.setMaxLines(1);label.setEllipsize(TextUtils.TruncateAt.END);
+        labels.addView(label);
+        if(description!=null && !description.isEmpty()) {
+            TextView sub=new TextView(this);sub.setText(description);
+            sub.setTextSize(12);sub.setTextColor(getColor(R.color.nav_secondary));
+            sub.setMaxLines(2);sub.setEllipsize(TextUtils.TruncateAt.END);
+            labels.addView(sub);
+        }
+        row.setOnClickListener(v->chooseDestination(position,name));
         resultsList.addView(row);
-        View divider = new View(this);
-        divider.setBackgroundColor(Color.rgb(237, 240, 242));
-        resultsList.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
+        View divider=new View(this);
+        divider.setBackgroundColor(getColor(R.color.nav_border));
+        resultsList.addView(divider,new LinearLayout.LayoutParams(-1,dp(1)));
     }
 
     @Override
@@ -524,6 +554,9 @@ public final class MainActivity extends Activity implements
     private void chooseDestination(LatLng point, String label) {
         destination = point;
         destinationName = label;
+        rememberPlace(point,label);
+        closeSearch();
+        searchBarTitle.setText(label);
         TripStore.setDestination(this, point, label);
         clearRouteLine();
         if (destinationMarker != null) destinationMarker.remove();
@@ -534,8 +567,11 @@ public final class MainActivity extends Activity implements
         destinationText.setText(label);
         routeSummary.setText("ระบุตำแหน่งแล้ว • กดแสดงเส้นทาง");
         routePanel.setVisibility(View.VISIBLE);
-        resultsPanel.setVisibility(View.GONE);
+        routeExpanded.setVisibility(View.GONE);
+        routeOpen=false;
+        statusText.setVisibility(View.GONE);
         map.animateCamera(CameraUpdateFactory.newLatLngZoom(point, 15));
+        ((Button)findViewById(R.id.routeButton)).setText(R.string.view_route);
         status("เลือกจุดหมายแล้ว: " + label);
     }
 
@@ -614,7 +650,7 @@ public final class MainActivity extends Activity implements
             return;
         }
         routeLine = map.addPolyline(new PolylineOptions().addAll(points)
-                .width(dp(7)).color(Color.rgb(0, 140, 127)).zIndex(2));
+                .width(dp(5)).color(getColor(R.color.nav_route)).zIndex(2));
         LatLngBounds.Builder bounds = new LatLngBounds.Builder();
         for (LatLng p : points) bounds.include(p);
         if (myLocation != null) bounds.include(myLocation);
@@ -622,8 +658,8 @@ public final class MainActivity extends Activity implements
         map.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds.build(), dp(84)));
         String km = String.format(Locale.forLanguageTag("th-TH"), "%.1f กม.", distanceMeters / 1000f);
         String time = Math.max(1L, Math.round(seconds / 60f)) + " นาที";
-        routeSummary.setText(mode + "  •  " + km + "  •  ประมาณ " + time + "\n" +
-                "แสดงแนวเส้นทางเท่านั้น ยังไม่มีเสียงนำทางเลี้ยวต่อเลี้ยว");
+        routeSummary.setText(mode + "  •  " + km + "  •  " + time);
+        ((Button)findViewById(R.id.routeButton)).setText(R.string.change_route);
         TripStore.setRoute(this, points, distanceMeters, seconds, mode);
         status("แสดงเส้นทางไปยัง " + destinationName + " แล้ว");
     }
@@ -656,8 +692,12 @@ public final class MainActivity extends Activity implements
             destinationMarker = null;
         }
         routePanel.setVisibility(View.GONE);
-        resultsPanel.setVisibility(View.GONE);
-        status("เลือกจุดหมายใหม่โดยค้นหาหรือแตะค้างบนแผนที่");
+        routeExpanded.setVisibility(View.GONE);
+        routeOpen=false;
+        searchBarTitle.setText(R.string.search_placeholder);
+        statusText.setVisibility(View.VISIBLE);
+        resultsPanel.setVisibility(View.VISIBLE);
+        status(NaviLocale.text(this,"แตะเพื่อค้นหาจุดหมาย","Tap search to find a destination"));
     }
 
 
@@ -690,14 +730,12 @@ public final class MainActivity extends Activity implements
         map.setMapType(type);
         map.setTrafficEnabled(p.getBoolean("traffic", true));
         boolean threed = p.getBoolean("view3d", true);
-        map.showBuildings(threed);
+        map.showBuildings(threed && p.getBoolean("buildings",true));
+        map.showMapText(p.getBoolean("labels",false));
         CameraPosition current = map.getCameraPosition();
         map.moveCamera(CameraUpdateFactory.newCameraPosition(
                 new CameraPosition.Builder(current).tilt(threed ? 55f : 0f).build()));
-        Button mode = findViewById(R.id.viewButton);
-        if (mode != null) mode.setText(threed ? "3D เปิด" : "2D");
-        Button traffic = findViewById(R.id.trafficButton);
-        if (traffic != null) traffic.setText(p.getBoolean("traffic", true) ? "จราจร ✓" : "จราจร ✕");
+        // Map controls stay in the two-button surface; individual layers are edited in a sheet.
         if (myMarker != null) myMarker.setIcon(currentMarkerIcon());
     }
 
@@ -714,15 +752,15 @@ public final class MainActivity extends Activity implements
         String glyph = icons[Math.max(0, Math.min(6, kind))];
         TextView iconView = new TextView(this);
         iconView.setText(glyph);
-        iconView.setTextSize(27f);
+        iconView.setTextSize(18f);
         iconView.setTextColor(Color.rgb(8,127,118));
         iconView.setTypeface(null, Typeface.BOLD);
         iconView.setGravity(Gravity.CENTER);
-        iconView.setPadding(dp(7), dp(5), dp(7), dp(5));
+        iconView.setPadding(dp(3), dp(3), dp(3), dp(3));
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(Color.WHITE);
-        bg.setCornerRadius(dp(20));
-        bg.setStroke(dp(2), Color.rgb(8,127,118));
+        bg.setCornerRadius(dp(16));
+        bg.setStroke(dp(1), Color.rgb(8,127,118));
         iconView.setBackground(bg);
         return BitmapDescriptorFactory.fromView(iconView);
     }
