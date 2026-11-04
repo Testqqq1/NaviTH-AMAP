@@ -266,6 +266,7 @@ public final class MainActivity extends Activity implements
         findViewById(R.id.routeSheetHeader).setOnClickListener(v -> toggleRouteExpanded());
         findViewById(R.id.sheetGrabber).setOnClickListener(v -> toggleRouteExpanded());
         findViewById(R.id.routeOptionsButton).setOnClickListener(v -> chooseRouteOptions());
+        findViewById(R.id.favoriteButton).setOnClickListener(v -> toggleFavorite());
         modeGroup.setOnCheckedChangeListener((g,id) -> {
             clearRouteLine();
             if (destination != null) {
@@ -911,6 +912,193 @@ public final class MainActivity extends Activity implements
             .setPositiveButton("แสดงบนแผนที่", (d,w)->{
                 chooseDestination(parked, "ที่จอดรถล่าสุด");
             }).setNegativeButton("ปิด",null).show();
+    }
+
+
+    private void toggleRouteExpanded() {
+        routeOpen=!routeOpen;
+        routeExpanded.setVisibility(routeOpen?View.VISIBLE:View.GONE);
+        updateFavoriteButton();
+    }
+
+    private void openSearch() {
+        searchOverlay.setVisibility(View.VISIBLE);
+        searchInput.setText("");
+        renderSavedPlaces();
+        searchInput.requestFocus();
+        searchInput.postDelayed(()->{
+            if(searchOverlay.getVisibility()==View.VISIBLE) {
+                InputMethodManager k=(InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);
+                if(k!=null)k.showSoftInput(searchInput,InputMethodManager.SHOW_IMPLICIT);
+            }
+        },150);
+    }
+    private void closeSearch() {
+        if(searchOverlay==null)return;
+        searchOverlay.setVisibility(View.GONE);
+        if(pendingSearch!=null)searchHandler.removeCallbacks(pendingSearch);
+        hideKeyboard();
+    }
+
+    private JSONArray saved(String key) {
+        try {return new JSONArray(getSharedPreferences("navith_places",MODE_PRIVATE).getString(key,"[]"));}
+        catch(Exception e){return new JSONArray();}
+    }
+    private JSONObject recordPlace(LatLng pt,String name) {
+        JSONObject o=new JSONObject();
+        try{o.put("title",name);o.put("lat",pt.latitude);o.put("lon",pt.longitude);}
+        catch(Exception ignored){}
+        return o;
+    }
+    private boolean samePlace(JSONObject o,LatLng pt) {
+        return o!=null && pt!=null && Math.abs(o.optDouble("lat",999)-pt.latitude)<0.00001
+                && Math.abs(o.optDouble("lon",999)-pt.longitude)<0.00001;
+    }
+    private void rememberPlace(LatLng point,String name) {
+        if(point==null || name==null || name.isEmpty())return;
+        JSONArray old=saved("recents"), result=new JSONArray();
+        result.put(recordPlace(point,name));
+        for(int i=0;i<old.length()&&result.length()<20;i++){
+            JSONObject p=old.optJSONObject(i);
+            if(p!=null&&!samePlace(p,point))result.put(p);
+        }
+        getSharedPreferences("navith_places",MODE_PRIVATE).edit()
+            .putString("recents",result.toString()).apply();
+    }
+    private boolean isFavorite(LatLng pt) {
+        JSONArray a=saved("favorites");
+        for(int i=0;i<a.length();i++)if(samePlace(a.optJSONObject(i),pt))return true;
+        return false;
+    }
+    private void toggleFavorite() {
+        if(destination==null)return;
+        boolean was=isFavorite(destination);
+        JSONArray old=saved("favorites"),now=new JSONArray();
+        if(!was)now.put(recordPlace(destination,destinationName));
+        for(int i=0;i<old.length()&&now.length()<40;i++){
+            JSONObject p=old.optJSONObject(i);
+            if(p!=null&&!samePlace(p,destination))now.put(p);
+        }
+        getSharedPreferences("navith_places",MODE_PRIVATE).edit()
+            .putString("favorites",now.toString()).apply();
+        updateFavoriteButton();
+    }
+    private void updateFavoriteButton() {
+        TextView b=findViewById(R.id.favoriteButton);
+        if(b!=null)b.setText(isFavorite(destination)
+            ? NaviLocale.text(this,"★  บันทึกไว้ในสถานที่โปรด","★  Saved to favorites")
+            : NaviLocale.text(this,"☆  บันทึกเป็นสถานที่โปรด","☆  Add to favorites"));
+    }
+    private void renderSavedPlaces() {
+        if(resultsList==null)return;
+        resultsPanel.setVisibility(View.VISIBLE);
+        resultsList.removeAllViews();
+        String term=searchInput.getText().toString().trim().toLowerCase(java.util.Locale.ROOT);
+        searchResultsHeading.setText(term.isEmpty()?R.string.recent_places:R.string.search_results);
+        int count=0;
+        for(String key:new String[]{"favorites","recents"}){
+            JSONArray places=saved(key);
+            if(places.length()==0)continue;
+            TextView section=new TextView(this);
+            section.setText("favorites".equals(key)?R.string.favorite_places:R.string.recent_places);
+            section.setTextSize(13);
+            section.setTextColor(getColor(R.color.nav_secondary));
+            section.setPadding(dp(12),dp(16),0,dp(7));
+            boolean displayed=false;
+            for(int i=0;i<Math.min(places.length(),10);i++){
+                JSONObject p=places.optJSONObject(i);
+                if(p==null)continue;
+                String name=p.optString("title","");
+                if(!name.toLowerCase(java.util.Locale.ROOT).contains(term))continue;
+                double lat=p.optDouble("lat",Double.NaN),lon=p.optDouble("lon",Double.NaN);
+                if(!Double.isFinite(lat)||!Double.isFinite(lon))continue;
+                if(!displayed){resultsList.addView(section);displayed=true;}
+                addResultItem(name,"favorites".equals(key)?getString(R.string.favorite_places)
+                    :getString(R.string.recent_places),new LatLng(lat,lon),"favorites".equals(key));
+                count++;
+            }
+        }
+        if(count==0){
+            TextView empty=new TextView(this);
+            empty.setText(term.isEmpty()?R.string.search_empty:
+                R.string.gps_searching);
+            empty.setTextSize(14);empty.setTextColor(getColor(R.color.nav_secondary));
+            empty.setPadding(dp(18),dp(20),dp(18),dp(20));
+            resultsList.addView(empty);
+        }
+    }
+    private void updateLocationMarkerVisibility() {
+        if(myMarker!=null)myMarker.setVisible(getViewPrefs().getBoolean("show_location",true));
+        if(gpsStatus!=null) {
+            if(!hasLocationPermission())gpsStatus.setText(R.string.gps_permission);
+            else if(myLocation==null)gpsStatus.setText(R.string.gps_searching);
+        }
+    }
+    private void addLayerSwitch(LinearLayout container,String label,String key,boolean defaultValue) {
+        Switch sw=new Switch(this);
+        sw.setText(label);sw.setTextSize(16);
+        sw.setTextColor(getColor(R.color.nav_text));sw.setMinHeight(dp(54));
+        sw.setPadding(dp(3),dp(6),dp(3),dp(6));
+        sw.setChecked(getViewPrefs().getBoolean(key,defaultValue));
+        sw.setOnCheckedChangeListener((button,enabled)->{
+            getViewPrefs().edit().putBoolean(key,enabled).apply();
+            applyMapPreferences();
+        });
+        container.addView(sw);
+    }
+    private void showLayers() {
+        Dialog dialog=new Dialog(this);
+        LinearLayout sheet=new LinearLayout(this);
+        sheet.setOrientation(LinearLayout.VERTICAL);
+        sheet.setPadding(dp(20),dp(16),dp(20),dp(22));
+        GradientDrawable bg=new GradientDrawable();
+        bg.setColor(Color.WHITE);
+        bg.setCornerRadii(new float[]{dp(24),dp(24),dp(24),dp(24),0,0,0,0});
+        sheet.setBackground(bg);
+        TextView title=new TextView(this);
+        title.setText(R.string.layers_title);title.setTextSize(21);
+        title.setTextColor(getColor(R.color.nav_text));title.setTypeface(null,Typeface.BOLD);
+        title.setPadding(0,0,0,dp(12));
+        sheet.addView(title);
+        addLayerSwitch(sheet,getString(R.string.view_labels),"labels",false);
+        addLayerSwitch(sheet,getString(R.string.view_traffic),"traffic",true);
+        addLayerSwitch(sheet,getString(R.string.view_3d),"buildings",true);
+        addLayerSwitch(sheet,NaviLocale.text(this,"มุมมองเอียง 3D","3D camera"),"view3d",true);
+        TextView note=new TextView(this);
+        note.setText(NaviLocale.text(this,
+            "เส้นทางจักรยานและชั้นขนส่งสาธารณะต้องใช้ข้อมูลเพิ่มเติม",
+            "Cycling and transit layers need additional data"));
+        note.setTextSize(12);note.setTextColor(getColor(R.color.nav_secondary));
+        note.setPadding(0,dp(12),0,dp(12));sheet.addView(note);
+        TextView settings=new TextView(this);
+        settings.setText(NaviLocale.text(this,"การตั้งค่าทั้งหมด     ›","All settings     ›"));
+        settings.setTextColor(getColor(R.color.nav_primary));settings.setTextSize(16);
+        settings.setTypeface(null,Typeface.BOLD);settings.setGravity(Gravity.CENTER_VERTICAL);
+        settings.setMinHeight(dp(52));sheet.addView(settings);
+        settings.setOnClickListener(v->{
+            dialog.dismiss();
+            startActivity(new Intent(this,SettingsActivity.class));
+        });
+        dialog.setContentView(sheet);
+        Window window=dialog.getWindow();
+        if(window!=null)window.setBackgroundDrawableResource(android.R.color.transparent);
+        dialog.show();
+        window=dialog.getWindow();
+        if(window!=null){
+            window.setGravity(Gravity.BOTTOM);
+            window.setLayout(-1,-2);
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams lp=window.getAttributes();
+            lp.dimAmount=.25f;window.setAttributes(lp);
+        }
+    }
+
+    @Override public void onBackPressed(){
+        if(searchOverlay!=null && searchOverlay.getVisibility()==View.VISIBLE){
+            closeSearch();return;
+        }
+        if(routeOpen){toggleRouteExpanded();return;}
+        super.onBackPressed();
     }
 
     private void hideKeyboard() {
