@@ -1,0 +1,44 @@
+[submodule "third_party/amap-web/amap-skills"]
+	path = third_party/amap-web/amap-skills
+	url = https://github.com/AMap-Web/amap-skills.git
+	branch = main
+
+[submodule "third_party/amap-web/amap-lbs-skill"]
+	path = third_party/amap-web/amap-lbs-skill
+	url = https://github.com/AMap-Web/amap-lbs-skill.git
+	branch = main
+
+[submodule "third_party/amap-web/amap-screenshot"]
+	path = third_party/amap-web/amap-screenshot
+	url = https://github.com/AMap-Web/amap-screenshot.git
+	branch = master
+
+[submodule "third_party/amap-web/layer-3dtiles"]
+	path = third_party/amap-web/layer-3dtiles
+	url = https://github.com/AMap-Web/layer-3dtiles.git
+	branch = master
+
+[submodule "third_party/amap-web/amap-jsapi-types"]
+	path = third_party/amap-web/amap-jsapi-types
+	url = https://github.com/AMap-Web/amap-jsapi-types.git
+	branch = main
+
+[submodule "third_party/amap-web/amap-three"]
+	path = third_party/amap-web/amap-three
+	url = https://github.com/AMap-Web/amap-three.git
+	branch = master
+
+[submodule "third_party/amap-web/amap-map-agent-skills"]
+	path = third_party/amap-web/amap-map-agent-skills
+	url = https://github.com/AMap-Web/amap-map-agent-skills.git
+	branch = main
+
+[submodule "third_party/amap-web/RealMapBench"]
+	path = third_party/amap-web/RealMapBench
+	url = https://github.com/AMap-Web/RealMapBench.git
+	branch = main
+
+[submodule "third_party/amap-web/amap-loca-types"]
+	path = third_party/amap-web/amap-loca-types
+	url = https://github.com/AMap-Web/amap-loca-types.git
+	branch = main

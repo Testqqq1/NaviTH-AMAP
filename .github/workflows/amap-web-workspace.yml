@@ -1,0 +1,58 @@
+name: Prepare AMap-Web source workspace
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.gitmodules'
+      - 'third_party/amap-web/**'
+      - 'tools/install-amap-web.sh'
+      - '.github/workflows/amap-web-workspace.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  source-workspace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out NaviTH and pinned AMap-Web submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Verify all expected AMap-Web repositories
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=(
+            amap-skills amap-lbs-skill amap-screenshot layer-3dtiles
+            amap-jsapi-types amap-three amap-map-agent-skills
+            RealMapBench amap-loca-types
+          )
+          mkdir -p dist
+          for name in "${expected[@]}"; do
+            folder="third_party/amap-web/$name"
+            test -d "$folder" || { echo "::error::Missing submodule $name"; exit 1; }
+            test -n "$(find "$folder" -mindepth 1 -maxdepth 2 -print -quit)" ||
+              { echo "::error::Empty checkout $name"; exit 1; }
+            echo "$name $(git -C "$folder" rev-parse HEAD) https://github.com/AMap-Web/$name" |
+              tee -a dist/AMap-Web-commits.txt
+          done
+          printf '%s\n' 'amap-loca-types- NO_COMMITS https://github.com/AMap-Web/amap-loca-types-' |
+            tee -a dist/AMap-Web-commits.txt
+          cp third_party/amap-web/README.md dist/README.md
+      - name: Package 9 source repositories without Git metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude='*/.git' -czf dist/AMap-Web-9-repositories.tar.gz third_party/amap-web
+          ls -lh dist/
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: AMap-Web-repositories-snapshot
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
