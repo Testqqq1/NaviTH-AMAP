@@ -175,7 +175,13 @@ public final class SettingsActivity extends Activity {
                 toggle(tx("การจราจรสด","Live traffic"),
                     tx("เมื่อ AMAP มีข้อมูลในพื้นที่","Where AMAP provides coverage"),"traffic",true);
                 toggle(tx("อาคาร 3D","3D buildings"),null,"buildings",true);
-                line(tx("สัญลักษณ์ตำแหน่ง","Position icon"),null,"›",()->chooseMarker());
+                int chosen=prefs.getInt("vehicle_icon",6);
+                String[] markerNames=VehicleMarkerFactory.titles(this);
+                line(tx("สัญลักษณ์ตำแหน่ง","Position icon"),
+                    tx("แตะไอคอนบนแผนที่เพื่อเปลี่ยนได้เช่นกัน",
+                       "You can also tap your marker on the map"),
+                    markerNames[Math.max(0,Math.min(markerNames.length-1,chosen))],
+                    ()->chooseMarker());
                 break;
             case "navigation":
                 section(tx("การวางเส้นทาง","Route preferences"));groupStart();
@@ -454,20 +460,12 @@ public final class SettingsActivity extends Activity {
     }
 
     private void chooseMarker() {
-        String[] opts={tx("รถเก๋ง","Sedan"),tx("แฮทช์แบ็ค","Hatchback"),
-            tx("รถตู้","Van"),"SUV",tx("กระบะ","Pickup"),tx("รถสปอร์ต","Sports car"),
-            tx("ลูกศร","Arrow"),tx("เลือกรูปของฉัน","Choose my image")};
-        new AlertDialog.Builder(this).setTitle(tx("รูปตำแหน่งบนแผนที่ (2D)","Position marker (2D)"))
-            .setItems(opts,(d,i)->{
-                if(i==7){
-                    Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                    pick.setType("image/*");pick.addCategory(Intent.CATEGORY_OPENABLE);
-                    startActivityForResult(pick,PICK_MARKER);
-                }else{
-                    prefs.edit().putInt("vehicle_icon",i).apply();
-                    build();
-                }
-            }).show();
+        VehicleMarkerFactory.showPicker(this,prefs,()->build(),()->{
+            Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            pick.setType("image/*");
+            pick.addCategory(Intent.CATEGORY_OPENABLE);
+            startActivityForResult(pick,PICK_MARKER);
+        });
     }
 
     @Override protected void onActivityResult(int request,int result,Intent data){
