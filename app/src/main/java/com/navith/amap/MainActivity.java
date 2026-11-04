@@ -7,6 +7,19 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.os.Handler;
+import android.os.Looper;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.app.Dialog;
+import android.view.Window;
+import android.view.WindowManager;
+import android.view.MotionEvent;
+import android.widget.Switch;
+import android.widget.ScrollView;
+import android.widget.FrameLayout;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
@@ -102,6 +115,15 @@ public final class MainActivity extends Activity implements
 
     private EditText searchInput;
     private TextView statusText;
+    private TextView gpsStatus;
+    private TextView searchBarTitle;
+    private TextView searchResultsHeading;
+    private LinearLayout searchOverlay;
+    private LinearLayout routeExpanded;
+    private final Handler searchHandler=new Handler(Looper.getMainLooper());
+    private Runnable pendingSearch;
+    private boolean routeOpen=false;
+    private String activeLanguage="th";
     private TextView destinationText;
     private TextView routeSummary;
     private LinearLayout resultsPanel;
@@ -119,9 +141,14 @@ public final class MainActivity extends Activity implements
         });
     };
 
+    @Override protected void attachBaseContext(Context base) {
+        super.attachBaseContext(NaviLocale.wrap(base));
+    }
+
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        activeLanguage=NaviLocale.language(this);
         if (getSharedPreferences("navith_consent", MODE_PRIVATE).getBoolean(CONSENT_PREFS, false)) {
             initializeApp(state);
         } else {
@@ -177,7 +204,7 @@ public final class MainActivity extends Activity implements
         AMapLocationClient.updatePrivacyShow(getApplicationContext(), true, true);
         AMapLocationClient.updatePrivacyAgree(getApplicationContext(), true);
         MapsInitializer.updateCountryCode("TH");
-        MapsInitializer.initRegionLanguageType(7); // Thai label support (subject to data coverage).
+        MapsInitializer.initRegionLanguageType(NaviLocale.thai(this) ? 7 : 2); // Thai or English where available.
         MapsInitializer.loadWorldVectorMap(true);
 
         setContentView(R.layout.activity_main);
@@ -196,13 +223,19 @@ public final class MainActivity extends Activity implements
         statusText = findViewById(R.id.statusText);
         destinationText = findViewById(R.id.destinationText);
         routeSummary = findViewById(R.id.routeSummary);
-        speedText = findViewById(R.id.speedText);
+        gpsStatus = findViewById(R.id.gpsStatus);
+        searchBarTitle = findViewById(R.id.searchBarTitle);
+        searchResultsHeading = findViewById(R.id.searchResultsHeading);
+        searchOverlay = findViewById(R.id.searchOverlay);
+        routeExpanded = findViewById(R.id.routeExpanded);
         resultsPanel = findViewById(R.id.resultsPanel);
         resultsList = findViewById(R.id.resultsList);
         routePanel = findViewById(R.id.routePanel);
         modeGroup = findViewById(R.id.modeGroup);
 
-        findViewById(R.id.searchButton).setOnClickListener(v -> searchPlaces());
+        findViewById(R.id.searchBarButton).setOnClickListener(v -> openSearch());
+        findViewById(R.id.searchBack).setOnClickListener(v -> closeSearch());
+        findViewById(R.id.searchClear).setOnClickListener(v -> searchInput.setText(""));
         searchInput.setOnEditorActionListener((v, id, event) -> {
             if (id == EditorInfo.IME_ACTION_SEARCH) {
                 searchPlaces();
@@ -210,22 +243,38 @@ public final class MainActivity extends Activity implements
             }
             return false;
         });
+        searchInput.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s,int start,int count,int after) {}
+            @Override public void onTextChanged(CharSequence text,int start,int before,int count) {
+                if(pendingSearch!=null)searchHandler.removeCallbacks(pendingSearch);
+                if(text.length()==0) { renderSavedPlaces(); return; }
+                String query=text.toString().trim();
+                if(query.length()<2) {renderSavedPlaces();return;}
+                searchResultsHeading.setText(getString(R.string.search_results));
+                pendingSearch=()->searchPlaces();
+                searchHandler.postDelayed(pendingSearch,420L);
+            }
+            @Override public void afterTextChanged(Editable e) {}
+        });
+
+        findViewById(R.id.menuButton).setOnClickListener(v ->
+                startActivity(new Intent(this,SettingsActivity.class)));
         findViewById(R.id.locationButton).setOnClickListener(v -> recenter());
-        findViewById(R.id.mapTypeButton).setOnClickListener(v -> chooseMapTheme());
-        findViewById(R.id.viewButton).setOnClickListener(v -> {
-            getViewPrefs().edit().putBoolean("view3d", !getViewPrefs().getBoolean("view3d", true)).apply();
-            applyMapPreferences();
-        });
-        findViewById(R.id.trafficButton).setOnClickListener(v -> {
-            getViewPrefs().edit().putBoolean("traffic", !getViewPrefs().getBoolean("traffic", true)).apply();
-            applyMapPreferences();
-        });
-        findViewById(R.id.settingsButton).setOnClickListener(v -> showMapSettings());
+        findViewById(R.id.mapTypeButton).setOnClickListener(v -> showLayers());
         findViewById(R.id.routeButton).setOnClickListener(v -> calculateRoute());
         findViewById(R.id.clearButton).setOnClickListener(v -> clearDestination());
-        modeGroup.setOnCheckedChangeListener((g, id) -> {
+        findViewById(R.id.routeSheetHeader).setOnClickListener(v -> toggleRouteExpanded());
+        findViewById(R.id.sheetGrabber).setOnClickListener(v -> toggleRouteExpanded());
+        findViewById(R.id.routeOptionsButton).setOnClickListener(v -> chooseRouteOptions());
+        modeGroup.setOnCheckedChangeListener((g,id) -> {
             clearRouteLine();
-            if (destination != null) routeSummary.setText("กดแสดงเส้นทางเพื่อคำนวณอีกครั้ง");
+            if (destination != null) {
+                routeSummary.setText(getString(R.string.view_route));
+                ((Button)findViewById(R.id.routeButton)).setText(R.string.view_route);
+            }
+        });
+        map.setOnMapTouchListener(e -> {
+            if(e.getAction()==MotionEvent.ACTION_DOWN)followLocation=false;
         });
 
         map.setOnMapLongClickListener(latLng -> chooseDestination(latLng, "ตำแหน่งที่เลือกบนแผนที่"));
@@ -351,11 +400,14 @@ public final class MainActivity extends Activity implements
             if (first) map.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation, zoom));
             else map.moveCamera(CameraUpdateFactory.newLatLng(myLocation));
         }
-        if (speedText != null) {
+        if (gpsStatus != null) {
             float speedKmh = fix.hasSpeed() ? fix.getSpeed() * 3.6f : 0f;
             boolean miles = getViewPrefs().getBoolean("mph", false);
-            speedText.setText("● " + source + " • ±" + Math.round(accuracy) + " ม.  |  "
-                    + Math.round(miles ? speedKmh / 1.609344f : speedKmh) + (miles ? " mph" : " km/h"));
+            String units=miles ? " mph" : " km/h";
+            gpsStatus.setText("◎ ±" + Math.round(accuracy) + " ม.  ·  "
+                    + Math.round(miles ? speedKmh / 1.609344f : speedKmh) + units);
+            gpsStatus.setContentDescription(getString(R.string.my_position) + " ±"
+                    + Math.round(accuracy) + (NaviLocale.thai(this) ? " เมตร" : " meters"));
         }
         if (first) status("พบพิกัดแล้วจาก " + source + " • ค้นหาปลายทางได้");
     }
@@ -840,14 +892,21 @@ public final class MainActivity extends Activity implements
 
     @Override protected void onResume() {
         super.onResume();
+        if (initialized && !NaviLocale.language(this).equals(activeLanguage)) {
+            recreate();return;
+        }
         if (mapView != null) mapView.onResume();
-        if (initialized && map != null) applyMapPreferences();
+        if (initialized && map != null) {
+            applyMapPreferences();
+            updateLocationMarkerVisibility();
+        }
         if (initialized && hasLocationPermission()) locateOnce();
     }
 
     @Override protected void onPause() {
         if (platformLocation != null) platformLocation.stop();
         if (locationClient != null) locationClient.stopLocation();
+        if (pendingSearch != null) searchHandler.removeCallbacks(pendingSearch);
         if (mapView != null) mapView.onPause();
         super.onPause();
     }
