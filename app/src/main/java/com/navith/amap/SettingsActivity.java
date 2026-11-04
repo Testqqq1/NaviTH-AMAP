@@ -338,6 +338,9 @@ public final class SettingsActivity extends Activity {
                 section(tx("การแสดงผลขั้นสูง","Advanced appearance"));groupStart();
                 line(tx("ซูมเริ่มต้น","Default zoom"),null,
                     String.format(Locale.US,"%.0f",prefs.getFloat("zoom",16f)),()->pickZoom());
+                line(tx("ตรวจสอบประสิทธิภาพและ GPS","GPS & route diagnostics"),
+                    tx("ข้อมูลระยะเวลาและความแม่นยำ ไม่บันทึกพิกัด","Timing and accuracy, no coordinates"),
+                    "›",()->showDiagnostics());
                 line(tx("ข้อมูลระบบ","System diagnostics"),
                     tx("เวอร์ชัน SDK และข้อจำกัด","SDK availability and limits"),
                     "›",()->showNavigationDetails());
@@ -410,6 +413,15 @@ public final class SettingsActivity extends Activity {
                 build();
             });
         }
+    }
+
+    private void showDiagnostics() {
+        new AlertDialog.Builder(this)
+            .setTitle(tx("การวินิจฉัยในเครื่อง","Local diagnostics"))
+            .setMessage(NavigationDiagnostics.summary(this))
+            .setNeutralButton(tx("ล้างข้อมูลวินิจฉัย","Clear diagnostics"),
+                (d,w)->NavigationDiagnostics.clear(this))
+            .setPositiveButton(tx("ปิด","Close"),null).show();
     }
 
     private void openAppPermissions() {
