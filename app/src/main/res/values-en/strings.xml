@@ -35,4 +35,5 @@
     <string name="english">English</string>
     <string name="thai">ไทย</string>
     <string name="not_yet_available">Not available yet</string>
+    <string name="address_lookup">Look up address at this point</string>
 </resources>
