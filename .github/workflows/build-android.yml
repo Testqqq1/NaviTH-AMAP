@@ -25,6 +25,9 @@ jobs:
       - name: Verify AMap-inspired NaviTH UI wiring
         run: python3 tools/check_ui_contracts.py
 
+      - name: Verify v1.2 navigation foundation
+        run: python3 tools/check_v12_navigation.py
+
       - name: Install Java 17
         uses: actions/setup-java@v4
         with:
