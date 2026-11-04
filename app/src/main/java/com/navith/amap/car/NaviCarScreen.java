@@ -27,7 +27,7 @@ import androidx.car.app.model.Pane;
 import androidx.car.app.model.PaneTemplate;
 import androidx.car.app.model.Row;
 import androidx.car.app.model.Template;
-import androidx.car.app.managers.AppManager;
+import androidx.car.app.AppManager;
 import androidx.car.app.navigation.model.MapWithContentTemplate;
 import androidx.car.app.navigation.model.MessageInfo;
 import androidx.car.app.navigation.model.NavigationTemplate;
