@@ -129,6 +129,12 @@
                 android:text="☆  บันทึกเป็นสถานที่โปรด"
                 android:textSize="14sp" android:textColor="@color/nav_primary"
                 android:clickable="true" android:focusable="true" />
+            <TextView android:id="@+id/etaText"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:paddingTop="7dp" android:paddingBottom="7dp"
+                android:textColor="@color/nav_secondary"
+                android:textSize="13sp"
+                android:text="@string/route_not_navigation" />
             <LinearLayout android:id="@+id/routeAlternatives"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
