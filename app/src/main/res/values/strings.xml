@@ -1,3 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">NaviTH</string>
+    <string name="app_name">NaviTH Maps</string>
+    <string name="nav_brand">NaviTH Maps</string>
+    <string name="search_placeholder">ค้นหาสถานที่หรือที่อยู่</string>
+    <string name="search_title">ค้นหาสถานที่</string>
+    <string name="search_clear">ล้างคำค้นหา</string>
+    <string name="back">ย้อนกลับ</string>
+    <string name="settings_title">ตั้งค่า</string>
+    <string name="layers_title">ชั้นข้อมูลแผนที่</string>
+    <string name="my_position">ตำแหน่งของฉัน</string>
+    <string name="gps_searching">กำลังค้นหาตำแหน่ง</string>
+    <string name="gps_permission">เปิดตำแหน่ง</string>
+    <string name="gps_low_accuracy">ตำแหน่งอาจคลาดเคลื่อน</string>
+    <string name="recent_places">สถานที่ล่าสุด</string>
+    <string name="favorite_places">สถานที่โปรด</string>
+    <string name="search_results">ผลการค้นหา</string>
+    <string name="search_empty">พิมพ์ชื่อสถานที่หรือเลือกจากรายการล่าสุด</string>
+    <string name="destination">จุดหมายปลายทาง</string>
+    <string name="view_route">ดูเส้นทาง</string>
+    <string name="change_route">คำนวณอีกครั้ง</string>
+    <string name="more_options">รายละเอียดเส้นทาง</string>
+    <string name="close_route">ปิดเส้นทาง</string>
+    <string name="drive">รถยนต์</string>
+    <string name="walk">เดินเท้า</string>
+    <string name="route_not_navigation">แสดงตัวอย่างเส้นทาง ยังไม่ใช่ระบบนำทางเลี้ยวต่อเลี้ยว</string>
+    <string name="layers">ชั้นข้อมูล</string>
+    <string name="settings">ตั้งค่า</string>
+    <string name="view_traffic">การจราจรสด</string>
+    <string name="view_labels">ข้อความบนแผนที่</string>
+    <string name="view_3d">อาคารและมุมมอง 3D</string>
+    <string name="view_satellite">ภาพดาวเทียม</string>
+    <string name="layer_unsupported">ต้องใช้ชุดข้อมูล/บริการเพิ่มเติม</string>
+    <string name="language">ภาษา</string>
+    <string name="english">English</string>
+    <string name="thai">ไทย</string>
+    <string name="not_yet_available">ยังไม่รองรับในรุ่นนี้</string>
 </resources>
