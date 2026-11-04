@@ -6,6 +6,11 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import java.io.InputStream;
+import java.io.FileOutputStream;
+import java.io.File;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -25,6 +30,7 @@ import java.util.Locale;
 
 /** User-facing full-screen settings, separate from the map controls. */
 public final class SettingsActivity extends Activity {
+    private static final int PICK_MARKER=830;
     private SharedPreferences prefs;
     private LinearLayout content;
     private int primary, secondary, accent;
@@ -58,7 +64,7 @@ public final class SettingsActivity extends Activity {
         setContentView(root);
         LinearLayout header=new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setBackgroundColor(Color.WHITE);
+        header.setBackgroundColor(getColor(R.color.nav_card));
         header.setPadding(dp(12),dp(8),dp(16),dp(8));
         root.addView(header,new LinearLayout.LayoutParams(-1,dp(64)));
         TextView back=label("‹",34,primary,false);
@@ -138,7 +144,7 @@ public final class SettingsActivity extends Activity {
     private void groupStart() {
         lastGroup=new LinearLayout(this);
         lastGroup.setOrientation(LinearLayout.VERTICAL);
-        lastGroup.setBackground(surface(Color.WHITE,20));
+        lastGroup.setBackground(surface(getColor(R.color.nav_card),20));
         lastGroup.setPadding(dp(14),dp(4),dp(14),dp(4));
         content.addView(lastGroup);
     }
@@ -227,8 +233,49 @@ public final class SettingsActivity extends Activity {
     private void chooseMarker() {
         String[] opts={tx("รถเก๋ง","Sedan"),tx("แฮทช์แบ็ค","Hatchback"),
             tx("รถตู้","Van"),"SUV",tx("กระบะ","Pickup"),tx("รถสปอร์ต","Sports car"),
-            tx("ลูกศร","Arrow")};
+            tx("ลูกศร","Arrow"),tx("เลือกรูปของฉัน","Choose my image")};
         new AlertDialog.Builder(this).setTitle(tx("รูปตำแหน่งบนแผนที่ (2D)","Position marker (2D)"))
-            .setItems(opts,(d,i)->{prefs.edit().putInt("vehicle_icon",i).apply();build();}).show();
+            .setItems(opts,(d,i)->{
+                if(i==7){
+                    Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    pick.setType("image/*");pick.addCategory(Intent.CATEGORY_OPENABLE);
+                    startActivityForResult(pick,PICK_MARKER);
+                }else{
+                    prefs.edit().putInt("vehicle_icon",i).apply();
+                    build();
+                }
+            }).show();
+    }
+
+    @Override protected void onActivityResult(int request,int result,Intent data){
+        super.onActivityResult(request,result,data);
+        if(request!=PICK_MARKER || result!=RESULT_OK || data==null || data.getData()==null)return;
+        try {
+            BitmapFactory.Options options=new BitmapFactory.Options();
+            options.inJustDecodeBounds=true;
+            try(InputStream in=getContentResolver().openInputStream(data.getData())){
+                BitmapFactory.decodeStream(in,null,options);
+            }
+            if(options.outWidth<=0 || options.outHeight<=0)throw new IllegalArgumentException("Invalid image");
+            options.inJustDecodeBounds=false;
+            options.inSampleSize=1;
+            while(Math.max(options.outWidth/options.inSampleSize, options.outHeight/options.inSampleSize)>512)
+                options.inSampleSize*=2;
+            Bitmap bitmap;
+            try(InputStream in=getContentResolver().openInputStream(data.getData())){
+                bitmap=BitmapFactory.decodeStream(in,null,options);
+            }
+            if(bitmap==null)throw new IllegalArgumentException("Unable to decode");
+            Bitmap small=Bitmap.createScaledBitmap(bitmap,96,96,true);
+            try(FileOutputStream out=new FileOutputStream(new File(getFilesDir(),"navith_marker.png"))){
+                small.compress(Bitmap.CompressFormat.PNG,100,out);
+            }
+            if(bitmap!=small)bitmap.recycle();
+            small.recycle();
+            prefs.edit().putInt("vehicle_icon",7).apply();
+            Toast.makeText(this,tx("บันทึกรูปตำแหน่งแล้ว","Position image saved"),Toast.LENGTH_SHORT).show();
+        }catch(Exception e){
+            Toast.makeText(this,tx("เปิดรูปไม่สำเร็จ","Could not open image"),Toast.LENGTH_SHORT).show();
+        }
     }
 }
