@@ -167,7 +167,17 @@ public final class MainActivity extends Activity implements
     private Runnable dismissStatus;
     private RadioGroup modeGroup;
     private final SharedPreferences.OnSharedPreferenceChangeListener tripChanges = (p,key) -> {
-        if (!TripStore.DESTINATION.equals(key) || !initialized) return;
+        if (!initialized) return;
+        if (NaviGuidanceStore.EVENT.equals(key)) {
+            runOnUiThread(() -> {
+                if(isFinishing() || !initialized) return;
+                refreshNavigationAction();
+                updateLiveGuidanceState();
+                showNavigationStateOnce();
+            });
+            return;
+        }
+        if (!TripStore.DESTINATION.equals(key)) return;
         runOnUiThread(() -> {
             if (!initialized || isFinishing()) return;
             LatLng remote=TripStore.destination(this);
@@ -327,6 +337,7 @@ public final class MainActivity extends Activity implements
         View startNavigation=findViewById(R.id.startNavigationButton);
         startNavigation.setVisibility(View.GONE); // Only after a real route preview has been computed.
         startNavigation.setOnClickListener(v -> {
+            if("planning".equals(NaviGuidanceStore.phase(this)))return;
             if(NaviGuidanceStore.isNavigating(this)) {
                 NavSdkBridge.stopNavigation(this);
                 refreshNavigationAction();
@@ -492,6 +503,13 @@ public final class MainActivity extends Activity implements
         float accuracy = fix.hasAccuracy() ? fix.getAccuracy() : 150f;
         if (accuracy > 250f) return;
         long now = SystemClock.elapsedRealtime();
+        // Reject Android cached/stale fixes; otherwise camera, turn and speed
+        // can appear current while the receiver has stopped delivering updates.
+        if(fix.getElapsedRealtimeNanos()>0L) {
+            long fixAgeMs=(android.os.SystemClock.elapsedRealtimeNanos()-
+                fix.getElapsedRealtimeNanos())/1_000_000L;
+            if(fixAgeMs>15000L || fixAgeMs< -2000L)return;
+        }
         if (lastLocationFixUptime != 0 && now - lastLocationFixUptime < 12000L
                 && accuracy > lastLocationAccuracy * 2.0f) return;
         boolean first = myLocation == null;
@@ -533,7 +551,7 @@ public final class MainActivity extends Activity implements
             }
         }
         if (gpsStatus != null) {
-            boolean navigating=NaviGuidanceStore.fresh(this)!=null;
+            boolean navigating=NaviGuidanceStore.isNavigating(this);
             if(accuracy>65f || navigating) {
                 String label=(accuracy>65f?"⚠ ":"◎ ")+"±"+Math.round(accuracy)
                     +(NaviLocale.thai(this)?" ม.":" m");
@@ -1736,9 +1754,43 @@ public final class MainActivity extends Activity implements
         }
         if (initialized) {
             refreshNavigationAction();
+            updateLiveGuidanceState();
             showNavigationStateOnce();
         }
         if (initialized && hasLocationPermission()) locateOnce();
+    }
+
+    /** Render only live SDK guidance, never reuse RouteSearch preview as turn instructions. */
+    private void updateLiveGuidanceState() {
+        if(routePanel==null || destination==null)return;
+        String phase=NaviGuidanceStore.phase(this);
+        NaviGuidanceStore.Snapshot live=NaviGuidanceStore.fresh(this);
+        if(live!=null) {
+            routeSummary.setText(tr("ถนนถัดไป: ","Next road: ")+live.nextRoad+
+                " · "+Math.max(0,live.nextMeters)+" m");
+            return;
+        }
+        if("planning".equals(phase)) {
+            routeSummary.setText(tr("กำลังเริ่มระบบนำทาง…","Opening navigation…"));
+        }else if("rerouting".equals(phase)) {
+            routeSummary.setText(tr("ออกนอกเส้นทาง · กำลังคำนวณใหม่…",
+                "Off route · Recalculating…"));
+        }else if("navigating".equals(phase)) {
+            routeSummary.setText(tr("กำลังติดตาม GPS · รอข้อมูลเลี้ยวจาก AMAP…",
+                "Following GPS · Waiting for AMAP turn guidance…"));
+        }else if("arrived".equals(phase)){
+            routeSummary.setText(tr("ถึงจุดหมายแล้ว","You have arrived"));
+            followLocation=false;
+            smoothHeading=Float.NaN;
+        }else if("error".equals(phase)) {
+            String message=NaviGuidanceStore.message(this);
+            routeSummary.setText(message.isEmpty()?
+                tr("เริ่มนำทางไม่สำเร็จ","Navigation failed"):message);
+        }else if("idle".equals(phase) && hasRoutePreview){
+            routeSummary.setText(tr("ดูเส้นทางอีกครั้งเพื่อเริ่มเดินทาง",
+                "Review route to begin again"));
+            smoothHeading=Float.NaN;
+        }
     }
 
     private void refreshNavigationAction() {
@@ -1746,11 +1798,14 @@ public final class MainActivity extends Activity implements
         Button b=findViewById(R.id.startNavigationButton);
         if(b==null)return;
         boolean running=NaviGuidanceStore.isNavigating(this);
+        boolean launching="planning".equals(NaviGuidanceStore.phase(this));
+        b.setEnabled(!launching);
         b.setVisibility(NavSdkBridge.isInstalled() &&
             (running || hasRoutePreview) &&
             modeGroup.getCheckedRadioButtonId()!=R.id.modeWalk ? View.VISIBLE:View.GONE);
-        b.setText(running ? tr("หยุดนำทาง","Stop navigation")
-            : tr("เริ่มนำทาง","Start navigation"));
+        b.setText(launching ? tr("กำลังเริ่มนำทาง…","Starting navigation…") :
+            running ? tr("หยุดนำทาง","Stop navigation") :
+            tr("เริ่มนำทาง","Start navigation"));
         b.setContentDescription(b.getText());
     }
     private void showNavigationStateOnce() {
