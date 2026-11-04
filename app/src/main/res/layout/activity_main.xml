@@ -214,7 +214,7 @@
         </HorizontalScrollView>
         <LinearLayout android:layout_width="match_parent" android:layout_height="66dp"
             android:orientation="horizontal" android:gravity="center_vertical">
-                <LinearLayout android:id="@+id/homeQuickRoute" android:layout_width="78dp"
+                <LinearLayout android:id="@+id/homeQuickRoute" android:layout_width="0dp" android:layout_weight="1"
                     android:layout_height="65dp" android:gravity="center"
                     android:orientation="vertical" android:clickable="true"
                     android:focusable="true" android:contentDescription="เส้นทาง">
@@ -228,7 +228,7 @@
                         android:singleLine="true" android:ellipsize="end"
                         android:textColor="@color/nav_text"/>
                 </LinearLayout>
-                <LinearLayout android:id="@+id/homeQuickPlaces" android:layout_width="78dp"
+                <LinearLayout android:id="@+id/homeQuickPlaces" android:layout_width="0dp" android:layout_weight="1"
                     android:layout_height="65dp" android:gravity="center"
                     android:orientation="vertical" android:clickable="true"
                     android:focusable="true" android:contentDescription="สำรวจ">
@@ -242,7 +242,7 @@
                         android:singleLine="true" android:ellipsize="end"
                         android:textColor="@color/nav_text"/>
                 </LinearLayout>
-                <LinearLayout android:id="@+id/homeQuickSaved" android:layout_width="78dp"
+                <LinearLayout android:id="@+id/homeQuickSaved" android:layout_width="0dp" android:layout_weight="1"
                     android:layout_height="65dp" android:gravity="center"
                     android:orientation="vertical" android:clickable="true"
                     android:focusable="true" android:contentDescription="สถานที่โปรด">
@@ -256,7 +256,7 @@
                         android:singleLine="true" android:ellipsize="end"
                         android:textColor="@color/nav_text"/>
                 </LinearLayout>
-                <LinearLayout android:id="@+id/homeQuickLayers" android:layout_width="78dp"
+                <LinearLayout android:id="@+id/homeQuickLayers" android:layout_width="0dp" android:layout_weight="1"
                     android:layout_height="65dp" android:gravity="center"
                     android:orientation="vertical" android:clickable="true"
                     android:focusable="true" android:contentDescription="ชั้นข้อมูล">
@@ -270,7 +270,7 @@
                         android:singleLine="true" android:ellipsize="end"
                         android:textColor="@color/nav_text"/>
                 </LinearLayout>
-                <LinearLayout android:id="@+id/homeQuickSettings" android:layout_width="78dp"
+                <LinearLayout android:id="@+id/homeQuickSettings" android:layout_width="0dp" android:layout_weight="1"
                     android:layout_height="65dp" android:gravity="center"
                     android:orientation="vertical" android:clickable="true"
                     android:focusable="true" android:contentDescription="ตั้งค่า">
