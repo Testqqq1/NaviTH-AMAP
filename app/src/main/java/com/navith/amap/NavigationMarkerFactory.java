@@ -28,8 +28,14 @@ public final class NavigationMarkerFactory {
     private NavigationMarkerFactory() {}
 
     public static BitmapDescriptor make(Context context, SharedPreferences settings) {
-        int kind=settings.getInt("vehicle_icon",ARROW);
-        boolean perspective=settings.getBoolean("marker_perspective",true);
+        Bitmap b=preview(context,settings.getInt("vehicle_icon",ARROW),
+            settings.getBoolean("marker_perspective",true));
+        BitmapDescriptor descriptor=BitmapDescriptorFactory.fromBitmap(b);
+        b.recycle();
+        return descriptor;
+    }
+
+    public static Bitmap preview(Context context,int kind,boolean perspective) {
         Bitmap b=Bitmap.createBitmap(SIZE,SIZE,Bitmap.Config.ARGB_8888);
         Canvas c=new Canvas(b);
         c.save();
@@ -43,9 +49,7 @@ public final class NavigationMarkerFactory {
         else drawCar(c,kind==POSITION_3D?3:Math.max(0,Math.min(kind,5)),
             perspective || kind==POSITION_3D);
         c.restore();
-        BitmapDescriptor descriptor=BitmapDescriptorFactory.fromBitmap(b);
-        b.recycle();
-        return descriptor;
+        return b;
     }
 
     public static String label(Context c, int kind) {
@@ -136,9 +140,9 @@ public final class NavigationMarkerFactory {
             c.drawRect(-half+9,23,half-9,bottom-10,fill(0xff5EAFA9));
         }
         c.drawRoundRect(new RectF(-half+9,top+2,-half+2,top+9),2f,2f,fill(0xffFBE5A0));
-        c.drawRoundRect(new RectF(half-2,top+2,half-9,top+9),2f,2f,fill(0xffFBE5A0));
+        c.drawRoundRect(new RectF(half-9,top+2,half-2,top+9),2f,2f,fill(0xffFBE5A0));
         c.drawRoundRect(new RectF(-half+9,bottom-7,-half+2,bottom-3),2f,2f,fill(0xffE96B6B));
-        c.drawRoundRect(new RectF(half-2,bottom-7,half-9,bottom-3),2f,2f,fill(0xffE96B6B));
+        c.drawRoundRect(new RectF(half-9,bottom-7,half-2,bottom-3),2f,2f,fill(0xffE96B6B));
     }
     private static boolean drawOwnImage(Context context,Canvas c){
         File f=new File(context.getFilesDir(),"navith_marker.png");
