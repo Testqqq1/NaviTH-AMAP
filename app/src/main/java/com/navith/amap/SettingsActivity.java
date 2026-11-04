@@ -31,6 +31,7 @@ import java.util.Locale;
 /** User-facing full-screen settings, separate from the map controls. */
 public final class SettingsActivity extends Activity {
     private static final int PICK_MARKER=830;
+    private static final int PICK_MAP_STYLE=831;
     private SharedPreferences prefs;
     private LinearLayout content;
     private int primary, secondary, accent;
@@ -125,6 +126,10 @@ public final class SettingsActivity extends Activity {
         line(tx("โมเดลตำแหน่ง","Position marker"),
             tx("รถ / ลูกศร / รูปส่วนตัว (2D)","Car / arrow / personal image (2D)"),"›",
             ()->chooseMarker());
+        line(tx("นำเข้า AMAP Map Style","Import AMAP map style"),
+            tx("ใช้ ZIP ที่เผยแพร่จาก AMAP Console","Use official offline style ZIP"),
+            MapStyleImporter.installed(this)?tx("ติดตั้งแล้ว","Installed"):"›",
+            ()->chooseStyleImport());
         line(tx("รายละเอียดการรองรับ","Feature availability"),
             tx("ดูขีดจำกัดของ Android Auto และ AMAP","Android Auto & AMAP capabilities"),"›",
             ()->new AlertDialog.Builder(this).setTitle(tx("สถานะ NaviTH","NaviTH status"))
@@ -230,6 +235,26 @@ public final class SettingsActivity extends Activity {
             .setMessage(String.format(Locale.US,"%.6f, %.6f",l.latitude,l.longitude))
             .setPositiveButton(tx("รับทราบ","OK"),null).show();
     }
+    private void chooseStyleImport() {
+        String[] options={tx("นำเข้า ZIP จาก AMAP Console","Import offline ZIP"),
+            tx("รีเซ็ตเป็นสไตล์เริ่มต้น","Reset to default style")};
+        new AlertDialog.Builder(this).setTitle(tx("ปรับสีและองค์ประกอบแผนที่","Map styling"))
+            .setMessage(tx("การลดสีหรือเลือกให้แสดงชื่อเฉพาะบางหมวดต้องมีสไตล์แผนที่ที่เผยแพร่จาก AMAP Console ก่อน",
+                "Granular colors and POI filtering require a published style from AMAP Console."))
+            .setItems(options,(d,i)->{
+                if(i==1) {
+                    MapStyleImporter.clear(this);
+                    Toast.makeText(this,tx("คืนค่าสไตล์เริ่มต้นแล้ว","Reset to default"),Toast.LENGTH_SHORT).show();
+                    build();
+                }else {
+                    Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    pick.setType("application/zip");
+                    pick.addCategory(Intent.CATEGORY_OPENABLE);
+                    startActivityForResult(pick,PICK_MAP_STYLE);
+                }
+            }).show();
+    }
+
     private void chooseMarker() {
         String[] opts={tx("รถเก๋ง","Sedan"),tx("แฮทช์แบ็ค","Hatchback"),
             tx("รถตู้","Van"),"SUV",tx("กระบะ","Pickup"),tx("รถสปอร์ต","Sports car"),
@@ -249,7 +274,25 @@ public final class SettingsActivity extends Activity {
 
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
-        if(request!=PICK_MARKER || result!=RESULT_OK || data==null || data.getData()==null)return;
+        if(result!=RESULT_OK || data==null || data.getData()==null)return;
+        if(request==PICK_MAP_STYLE) {
+            android.net.Uri uri=data.getData();
+            new Thread(()->{
+                try{
+                    MapStyleImporter.install(this,uri);
+                    runOnUiThread(()->{
+                        Toast.makeText(this,tx("นำเข้าสไตล์สำเร็จ","Map style imported"),Toast.LENGTH_SHORT).show();
+                        build();
+                    });
+                }catch(Exception ex){
+                    runOnUiThread(()->Toast.makeText(this,
+                        tx("ไฟล์ไม่ถูกต้อง ต้องเป็น ZIP จาก AMAP Console","Invalid ZIP: use a published AMAP style"),
+                        Toast.LENGTH_LONG).show());
+                }
+            }).start();
+            return;
+        }
+        if(request!=PICK_MARKER)return;
         try {
             BitmapFactory.Options options=new BitmapFactory.Options();
             options.inJustDecodeBounds=true;
