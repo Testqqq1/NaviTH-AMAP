@@ -103,6 +103,8 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         }
     };
     private boolean routing=false;
+    private final Handler sharedUiHandler=new Handler(Looper.getMainLooper());
+    private long lastTemplateInvalidate=0L;
     private boolean followGps=true;
     private long lastCarCameraUpdate=0L;
     private LatLng requestedDestination;
@@ -111,7 +113,7 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         super(c);
         prefs=TripStore.prefs(c);
         viewPrefs=c.getSharedPreferences("navith_view",Context.MODE_PRIVATE);
-        viewChanges=(sp,key)->new Handler(Looper.getMainLooper()).post(()->{
+        viewChanges=(sp,key)->sharedUiHandler.post(()->{
             if("vehicle_icon".equals(key) || "marker_perspective".equals(key)){
                 carArrowIcon=null;
                 if(carLocationMarker!=null)carLocationMarker.setIcon(carMarkerIcon());
@@ -121,11 +123,16 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         viewPrefs.registerOnSharedPreferenceChangeListener(viewChanges);
         changes=(shared,key) -> {
             if (TripStore.DESTINATION.equals(key) || TripStore.ROUTE.equals(key) || TripStore.LOCATION.equals(key) || NaviGuidanceStore.EVENT.equals(key)) {
-                new Handler(Looper.getMainLooper()).post(() -> {
-                    if (TripStore.LOCATION.equals(key) ||
-                        NaviGuidanceStore.EVENT.equals(key)) updateLocationMarker();
+                sharedUiHandler.post(() -> {
+                    boolean gpsTick=TripStore.LOCATION.equals(key);
+                    if (gpsTick || NaviGuidanceStore.EVENT.equals(key)) updateLocationMarker();
                     else updateMap();
-                    invalidate();
+                    // Avoid rebuilding the Car App template for every GPS callback.
+                    long now=android.os.SystemClock.elapsedRealtime();
+                    if(!gpsTick || now-lastTemplateInvalidate>=1100L) {
+                        lastTemplateInvalidate=now;
+                        invalidate();
+                    }
                     if (TripStore.DESTINATION.equals(key) && TripStore.destination(getCarContext())!=null) calculateCarRoute();
                 });
             }

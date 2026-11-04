@@ -28,8 +28,8 @@ public final class NavigationMarkerFactory {
     private NavigationMarkerFactory() {}
 
     public static BitmapDescriptor make(Context context, SharedPreferences settings) {
-        Bitmap b=preview(context,settings.getInt("vehicle_icon",ARROW),
-            settings.getBoolean("marker_perspective",true));
+        Bitmap b=preview(context,settings.getInt("vehicle_icon",MINIMAL_ARROW),
+            settings.getBoolean("marker_perspective",false));
         BitmapDescriptor descriptor=BitmapDescriptorFactory.fromBitmap(b);
         b.recycle();
         return descriptor;
@@ -42,7 +42,7 @@ public final class NavigationMarkerFactory {
         c.translate(SIZE/2f,SIZE/2f);
         // Source geometry uses +/- 48 world pixels; exact center stays at
         // the antenna/GPS coordinate, including when camera pitch changes.
-        drawShadow(c);
+        if(kind!=MINIMAL_ARROW)drawShadow(c);
         if(kind==OWN_IMAGE && drawOwnImage(context,c)) { /* owned bitmap */ }
         else if(kind==ARROW || kind==MINIMAL_ARROW)
             drawArrow(c,kind==MINIMAL_ARROW,perspective);
@@ -96,12 +96,12 @@ public final class NavigationMarkerFactory {
         Path p=polygon(0,-47,35,42,0,25,-35,42);
         if(!minimal && perspective){
             c.drawPath(p,outline(Color.WHITE,9f));
-            c.drawPath(p,fill(0xff087F77));
-            c.drawPath(polygon(0,-43,0,22,-25,33),fill(0xff0B5B59));
-            c.drawPath(polygon(0,-43,25,33,0,22),fill(0xff27C5B6));
+            c.drawPath(p,fill(0xff2D80F5));
+            c.drawPath(polygon(0,-43,0,22,-25,33),fill(0xff1857AA));
+            c.drawPath(polygon(0,-43,25,33,0,22),fill(0xff8DBBFF));
         }else{
             c.drawPath(p,outline(Color.WHITE,minimal?8f:10f));
-            c.drawPath(p,fill(minimal?0xff172B32:0xff087F77));
+            c.drawPath(p,fill(minimal?0xff2D80F5:0xff2D80F5));
             if(!minimal)c.drawPath(polygon(0,-34,10,18,0,12,-10,18),fill(0xff8AE9DE));
         }
     }
@@ -112,32 +112,32 @@ public final class NavigationMarkerFactory {
         float top=sport?-39f:(van?-46f:-43f);
         float bottom=hatch?34f:(van?47f:43f);
         // Tire edges are placed at their actual sides, even on tilted maps.
-        c.drawRoundRect(new RectF(-half-9,-24,-half+1,3),5f,5f,fill(0xff152F34));
-        c.drawRoundRect(new RectF(half-1,-24,half+9,3),5f,5f,fill(0xff152F34));
-        c.drawRoundRect(new RectF(-half-9,18,-half+1,37),5f,5f,fill(0xff152F34));
-        c.drawRoundRect(new RectF(half-1,18,half+9,37),5f,5f,fill(0xff152F34));
+        c.drawRoundRect(new RectF(-half-9,-24,-half+1,3),5f,5f,fill(0xff1F3246));
+        c.drawRoundRect(new RectF(half-1,-24,half+9,3),5f,5f,fill(0xff1F3246));
+        c.drawRoundRect(new RectF(-half-9,18,-half+1,37),5f,5f,fill(0xff1F3246));
+        c.drawRoundRect(new RectF(half-1,18,half+9,37),5f,5f,fill(0xff1F3246));
         Path chassis=polygon(-half+7,top,half-7,top,half,top+9,
             half,bottom-9,half-7,bottom,-half+7,bottom,-half,bottom-9,-half,top+9);
         c.drawPath(chassis,outline(Color.WHITE,5f));
-        c.drawPath(chassis,fill(0xff087F77));
+        c.drawPath(chassis,fill(0xff2D80F5));
         if(perspective){
             c.drawPath(polygon(-half+7,top,0,top-1,0,bottom,
-                -half+4,bottom-7,-half,top+9),fill(0xff0C5754));
+                -half+4,bottom-7,-half,top+9),fill(0xff175EB4));
             c.drawPath(polygon(0,top-1,half-7,top,half,top+9,
-                half-4,bottom-7,0,bottom),fill(0xff23B1A8));
+                half-4,bottom-7,0,bottom),fill(0xffA1CBFA));
         }
         final float roofTop=van?-25f:(sport?-14f:-21f);
         final float roofEnd=pickup?10f:(hatch?19f:25f);
         float roofWidth=sport?17f:(van||suv?24f:20f);
         c.drawRoundRect(new RectF(-roofWidth,roofTop,roofWidth,roofEnd),
-            sport?11f:9f,sport?11f:9f,fill(0xff1E6770));
+            sport?11f:9f,sport?11f:9f,fill(0xff1D6DD0));
         c.drawPath(polygon(-roofWidth+3,roofTop+2,roofWidth-3,roofTop+2,
-            roofWidth-6,roofTop+14,-roofWidth+6,roofTop+14),fill(0xffBDEBF0));
+            roofWidth-6,roofTop+14,-roofWidth+6,roofTop+14),fill(0xffE4F3FF));
         c.drawPath(polygon(-roofWidth+5,roofEnd-12,roofWidth-5,roofEnd-12,
-            roofWidth-3,roofEnd-3,-roofWidth+3,roofEnd-3),fill(0xff94C6D0));
+            roofWidth-3,roofEnd-3,-roofWidth+3,roofEnd-3),fill(0xffA3C2E2));
         if(pickup){
-            c.drawRoundRect(new RectF(-half+6,19,half-6,bottom-6),3f,3f,fill(0xff234B52));
-            c.drawRect(-half+9,23,half-9,bottom-10,fill(0xff5EAFA9));
+            c.drawRoundRect(new RectF(-half+6,19,half-6,bottom-6),3f,3f,fill(0xff2462AA));
+            c.drawRect(-half+9,23,half-9,bottom-10,fill(0xffAED4FA));
         }
         c.drawRoundRect(new RectF(-half+9,top+2,-half+2,top+9),2f,2f,fill(0xffFBE5A0));
         c.drawRoundRect(new RectF(half-9,top+2,half-2,top+9),2f,2f,fill(0xffFBE5A0));
@@ -154,7 +154,7 @@ public final class NavigationMarkerFactory {
         try {
             c.drawCircle(0,0,47f,fill(Color.WHITE));
             c.drawBitmap(image,null,new RectF(-42,-42,42,42),fill(Color.WHITE));
-            c.drawCircle(0,0,44f,outline(0xff087F77,4f));
+            c.drawCircle(0,0,44f,outline(0xff2D80F5,4f));
         } finally {image.recycle();}
         return true;
     }

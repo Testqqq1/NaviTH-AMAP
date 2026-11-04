@@ -117,9 +117,9 @@
                 android:text="ค้นหาสถานที่ ถนน และที่อยู่..."
                 android:textSize="16sp" android:singleLine="true" android:ellipsize="end"
                 android:textColor="@color/nav_text"/>
-            <TextView android:layout_width="44dp" android:layout_height="48dp"
-                android:gravity="center" android:text="⌕" android:textSize="25sp"
-                android:textColor="@color/nav_secondary"/>
+            <ImageView android:layout_width="44dp" android:layout_height="48dp"
+                android:padding="12dp" android:src="@drawable/nav_min_search"
+                android:scaleType="fitCenter" android:contentDescription="@null"/>
         </LinearLayout>
         <HorizontalScrollView android:id="@+id/homeTravelModes"
             android:layout_width="match_parent"
@@ -131,10 +131,11 @@
                     android:layout_height="83dp" android:gravity="center"
                     android:orientation="vertical" android:clickable="true"
                     android:focusable="true" android:contentDescription="ขับรถ">
-                    <TextView android:layout_width="52dp" android:layout_height="52dp"
-                        android:text="🚘" android:gravity="center"
-                        android:textSize="27sp" android:textColor="@color/nav_primary"
-                        android:background="@drawable/nav_bg_subtle"/>
+                    <ImageView android:layout_width="52dp" android:layout_height="52dp"
+                         android:padding="12dp"
+                         android:src="@drawable/nav_min_car"
+                         android:background="@drawable/nav_bg_subtle"
+                         android:scaleType="fitCenter" android:contentDescription="@null"/>
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:gravity="center" android:layout_marginTop="5dp"
                         android:text="ขับรถ" android:textSize="12sp"
@@ -145,10 +146,11 @@
                     android:layout_height="83dp" android:gravity="center"
                     android:orientation="vertical" android:clickable="true"
                     android:focusable="true" android:contentDescription="ขนส่ง">
-                    <TextView android:layout_width="52dp" android:layout_height="52dp"
-                        android:text="🚍" android:gravity="center"
-                        android:textSize="27sp" android:textColor="@color/nav_primary"
-                        android:background="@drawable/nav_bg_subtle"/>
+                    <ImageView android:layout_width="52dp" android:layout_height="52dp"
+                         android:padding="12dp"
+                         android:src="@drawable/nav_min_bus"
+                         android:background="@drawable/nav_bg_subtle"
+                         android:scaleType="fitCenter" android:contentDescription="@null"/>
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:gravity="center" android:layout_marginTop="5dp"
                         android:text="ขนส่ง" android:textSize="12sp"
@@ -159,10 +161,11 @@
                     android:layout_height="83dp" android:gravity="center"
                     android:orientation="vertical" android:clickable="true"
                     android:focusable="true" android:contentDescription="Ride">
-                    <TextView android:layout_width="52dp" android:layout_height="52dp"
-                        android:text="◇" android:gravity="center"
-                        android:textSize="27sp" android:textColor="@color/nav_primary"
-                        android:background="@drawable/nav_bg_subtle"/>
+                    <ImageView android:layout_width="52dp" android:layout_height="52dp"
+                         android:padding="12dp"
+                         android:src="@drawable/nav_min_ride"
+                         android:background="@drawable/nav_bg_subtle"
+                         android:scaleType="fitCenter" android:contentDescription="@null"/>
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:gravity="center" android:layout_marginTop="5dp"
                         android:text="Ride" android:textSize="12sp"
@@ -173,10 +176,11 @@
                     android:layout_height="83dp" android:gravity="center"
                     android:orientation="vertical" android:clickable="true"
                     android:focusable="true" android:contentDescription="เดิน">
-                    <TextView android:layout_width="52dp" android:layout_height="52dp"
-                        android:text="♙" android:gravity="center"
-                        android:textSize="27sp" android:textColor="@color/nav_primary"
-                        android:background="@drawable/nav_bg_subtle"/>
+                    <ImageView android:layout_width="52dp" android:layout_height="52dp"
+                         android:padding="12dp"
+                         android:src="@drawable/nav_min_walk"
+                         android:background="@drawable/nav_bg_subtle"
+                         android:scaleType="fitCenter" android:contentDescription="@null"/>
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:gravity="center" android:layout_marginTop="5dp"
                         android:text="เดิน" android:textSize="12sp"
@@ -187,10 +191,11 @@
                     android:layout_height="83dp" android:gravity="center"
                     android:orientation="vertical" android:clickable="true"
                     android:focusable="true" android:contentDescription="จักรยาน">
-                    <TextView android:layout_width="52dp" android:layout_height="52dp"
-                        android:text="🚲" android:gravity="center"
-                        android:textSize="27sp" android:textColor="@color/nav_primary"
-                        android:background="@drawable/nav_bg_subtle"/>
+                    <ImageView android:layout_width="52dp" android:layout_height="52dp"
+                         android:padding="12dp"
+                         android:src="@drawable/nav_min_bike"
+                         android:background="@drawable/nav_bg_subtle"
+                         android:scaleType="fitCenter" android:contentDescription="@null"/>
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:gravity="center" android:layout_marginTop="5dp"
                         android:text="จักรยาน" android:textSize="12sp"
@@ -201,10 +206,11 @@
                     android:layout_height="83dp" android:gravity="center"
                     android:orientation="vertical" android:clickable="true"
                     android:focusable="true" android:contentDescription="มอเตอร์ไซค์">
-                    <TextView android:layout_width="52dp" android:layout_height="52dp"
-                        android:text="🛵" android:gravity="center"
-                        android:textSize="27sp" android:textColor="@color/nav_primary"
-                        android:background="@drawable/nav_bg_subtle"/>
+                    <ImageView android:layout_width="52dp" android:layout_height="52dp"
+                         android:padding="12dp"
+                         android:src="@drawable/nav_min_moto"
+                         android:background="@drawable/nav_bg_subtle"
+                         android:scaleType="fitCenter" android:contentDescription="@null"/>
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:gravity="center" android:layout_marginTop="5dp"
                         android:text="มอเตอร์ไซค์" android:textSize="12sp"
@@ -220,10 +226,11 @@
                     android:layout_height="65dp" android:gravity="center"
                     android:orientation="vertical" android:clickable="true"
                     android:focusable="true" android:contentDescription="เส้นทาง">
-                    <TextView android:layout_width="52dp" android:layout_height="37dp"
-                        android:text="⌁" android:gravity="center"
-                        android:textSize="21sp" android:textColor="@color/nav_primary"
-                        android:background="@drawable/nav_bg_subtle"/>
+                    <ImageView android:layout_width="52dp" android:layout_height="37dp"
+                         android:padding="7dp"
+                         android:src="@drawable/nav_min_route"
+                         android:background="@drawable/nav_bg_subtle"
+                         android:scaleType="fitCenter" android:contentDescription="@null"/>
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:gravity="center" android:layout_marginTop="5dp"
                         android:text="เส้นทาง" android:textSize="12sp"
@@ -234,10 +241,11 @@
                     android:layout_height="65dp" android:gravity="center"
                     android:orientation="vertical" android:clickable="true"
                     android:focusable="true" android:contentDescription="สำรวจ">
-                    <TextView android:layout_width="52dp" android:layout_height="37dp"
-                        android:text="⌖" android:gravity="center"
-                        android:textSize="21sp" android:textColor="@color/nav_primary"
-                        android:background="@drawable/nav_bg_subtle"/>
+                    <ImageView android:layout_width="52dp" android:layout_height="37dp"
+                         android:padding="7dp"
+                         android:src="@drawable/nav_min_explore"
+                         android:background="@drawable/nav_bg_subtle"
+                         android:scaleType="fitCenter" android:contentDescription="@null"/>
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:gravity="center" android:layout_marginTop="5dp"
                         android:text="สำรวจ" android:textSize="12sp"
@@ -248,10 +256,11 @@
                     android:layout_height="65dp" android:gravity="center"
                     android:orientation="vertical" android:clickable="true"
                     android:focusable="true" android:contentDescription="สถานที่โปรด">
-                    <TextView android:layout_width="52dp" android:layout_height="37dp"
-                        android:text="☆" android:gravity="center"
-                        android:textSize="21sp" android:textColor="@color/nav_primary"
-                        android:background="@drawable/nav_bg_subtle"/>
+                    <ImageView android:layout_width="52dp" android:layout_height="37dp"
+                         android:padding="7dp"
+                         android:src="@drawable/nav_min_favorite"
+                         android:background="@drawable/nav_bg_subtle"
+                         android:scaleType="fitCenter" android:contentDescription="@null"/>
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:gravity="center" android:layout_marginTop="5dp"
                         android:text="สถานที่โปรด" android:textSize="12sp"
@@ -262,10 +271,11 @@
                     android:layout_height="65dp" android:gravity="center"
                     android:orientation="vertical" android:clickable="true"
                     android:focusable="true" android:contentDescription="ชั้นข้อมูล">
-                    <TextView android:layout_width="52dp" android:layout_height="37dp"
-                        android:text="◈" android:gravity="center"
-                        android:textSize="21sp" android:textColor="@color/nav_primary"
-                        android:background="@drawable/nav_bg_subtle"/>
+                    <ImageView android:layout_width="52dp" android:layout_height="37dp"
+                         android:padding="7dp"
+                         android:src="@drawable/nav_min_layers"
+                         android:background="@drawable/nav_bg_subtle"
+                         android:scaleType="fitCenter" android:contentDescription="@null"/>
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:gravity="center" android:layout_marginTop="5dp"
                         android:text="ชั้นข้อมูล" android:textSize="12sp"
@@ -276,10 +286,11 @@
                     android:layout_height="65dp" android:gravity="center"
                     android:orientation="vertical" android:clickable="true"
                     android:focusable="true" android:contentDescription="ตั้งค่า">
-                    <TextView android:layout_width="52dp" android:layout_height="37dp"
-                        android:text="⚙" android:gravity="center"
-                        android:textSize="21sp" android:textColor="@color/nav_primary"
-                        android:background="@drawable/nav_bg_subtle"/>
+                    <ImageView android:layout_width="52dp" android:layout_height="37dp"
+                         android:padding="7dp"
+                         android:src="@drawable/nav_min_settings"
+                         android:background="@drawable/nav_bg_subtle"
+                         android:scaleType="fitCenter" android:contentDescription="@null"/>
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:gravity="center" android:layout_marginTop="5dp"
                         android:text="ตั้งค่า" android:textSize="12sp"
@@ -294,14 +305,14 @@
             <TextView android:id="@+id/homeShortcut"
                 android:layout_width="0dp" android:layout_weight="1"
                 android:layout_height="42dp" android:gravity="center"
-                android:text="⌂  บ้าน" android:textSize="13sp"
+                android:text="บ้าน" android:textSize="13sp"
                 android:textColor="@color/nav_text" android:clickable="true"
                 android:focusable="true" android:background="@drawable/nav_bg_subtle"
                 android:contentDescription="@string/home_label"/>
             <TextView android:id="@+id/workShortcut"
                 android:layout_width="0dp" android:layout_weight="1"
                 android:layout_height="42dp" android:layout_marginStart="7dp"
-                android:gravity="center" android:text="▣  ที่ทำงาน"
+                android:gravity="center" android:text="ที่ทำงาน"
                 android:textSize="13sp" android:textColor="@color/nav_text"
                 android:clickable="true" android:focusable="true"
                 android:background="@drawable/nav_bg_subtle"
@@ -309,7 +320,7 @@
             <TextView android:id="@+id/recentShortcut"
                 android:layout_width="0dp" android:layout_weight="1"
                 android:layout_height="42dp" android:layout_marginStart="7dp"
-                android:gravity="center" android:text="◷  ล่าสุด"
+                android:gravity="center" android:text="ล่าสุด"
                 android:textSize="13sp" android:textColor="@color/nav_text"
                 android:clickable="true" android:focusable="true"
                 android:background="@drawable/nav_bg_subtle"
@@ -337,9 +348,9 @@
                     android:gravity="center" android:orientation="vertical"
                     android:focusable="true" android:clickable="true"
                     android:contentDescription="หน้าแรก">
-                    <TextView android:layout_width="match_parent" android:layout_height="29dp"
-                        android:gravity="center" android:text="▲"
-                        android:textSize="23sp" android:textColor="@color/nav_primary"/>
+                    <ImageView android:layout_width="match_parent" android:layout_height="29dp"
+                         android:padding="4dp" android:scaleType="fitCenter"
+                         android:src="@drawable/nav_min_home" android:contentDescription="@null"/>
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:gravity="center" android:text="หน้าแรก" android:textSize="11sp"
                         android:textColor="@color/nav_primary"/>
@@ -349,9 +360,9 @@
                     android:gravity="center" android:orientation="vertical"
                     android:focusable="true" android:clickable="true"
                     android:contentDescription="สำรวจ">
-                    <TextView android:layout_width="match_parent" android:layout_height="29dp"
-                        android:gravity="center" android:text="⌖"
-                        android:textSize="23sp" android:textColor="@color/nav_text"/>
+                    <ImageView android:layout_width="match_parent" android:layout_height="29dp"
+                         android:padding="4dp" android:scaleType="fitCenter"
+                         android:src="@drawable/nav_min_explore" android:contentDescription="@null"/>
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:gravity="center" android:text="สำรวจ" android:textSize="11sp"
                         android:textColor="@color/nav_text"/>
@@ -361,9 +372,9 @@
                     android:gravity="center" android:orientation="vertical"
                     android:focusable="true" android:clickable="true"
                     android:contentDescription="เส้นทาง">
-                    <TextView android:layout_width="match_parent" android:layout_height="29dp"
-                        android:gravity="center" android:text="▤"
-                        android:textSize="23sp" android:textColor="@color/nav_text"/>
+                    <ImageView android:layout_width="match_parent" android:layout_height="29dp"
+                         android:padding="4dp" android:scaleType="fitCenter"
+                         android:src="@drawable/nav_min_route" android:contentDescription="@null"/>
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:gravity="center" android:text="เส้นทาง" android:textSize="11sp"
                         android:textColor="@color/nav_text"/>
@@ -373,9 +384,9 @@
                     android:gravity="center" android:orientation="vertical"
                     android:focusable="true" android:clickable="true"
                     android:contentDescription="บันทึก">
-                    <TextView android:layout_width="match_parent" android:layout_height="29dp"
-                        android:gravity="center" android:text="☆"
-                        android:textSize="23sp" android:textColor="@color/nav_text"/>
+                    <ImageView android:layout_width="match_parent" android:layout_height="29dp"
+                         android:padding="4dp" android:scaleType="fitCenter"
+                         android:src="@drawable/nav_min_favorite" android:contentDescription="@null"/>
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:gravity="center" android:text="บันทึก" android:textSize="11sp"
                         android:textColor="@color/nav_text"/>
@@ -385,9 +396,9 @@
                     android:gravity="center" android:orientation="vertical"
                     android:focusable="true" android:clickable="true"
                     android:contentDescription="ของฉัน">
-                    <TextView android:layout_width="match_parent" android:layout_height="29dp"
-                        android:gravity="center" android:text="♙"
-                        android:textSize="23sp" android:textColor="@color/nav_text"/>
+                    <ImageView android:layout_width="match_parent" android:layout_height="29dp"
+                         android:padding="4dp" android:scaleType="fitCenter"
+                         android:src="@drawable/nav_min_profile" android:contentDescription="@null"/>
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:gravity="center" android:text="ของฉัน" android:textSize="11sp"
                         android:textColor="@color/nav_text"/>
@@ -535,6 +546,75 @@
         android:visibility="gone"
         android:ellipsize="end" android:textColor="@color/nav_secondary"
         android:text="@string/search_empty"/>
+
+    <!-- Separate foreground TEST navigation scene; never claims production guidance. -->
+    <LinearLayout android:id="@+id/activeNavTop"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_gravity="top" android:layout_margin="12dp"
+        android:orientation="vertical" android:background="@drawable/nav_bg_floating"
+        android:elevation="8dp" android:padding="16dp"
+        android:visibility="gone">
+        <TextView android:id="@+id/activeNavPhase"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="MAPBOX · GPS TEST" android:textStyle="bold" android:textSize="11sp"
+            android:textColor="@color/nav_warning"/>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:gravity="center_vertical"
+            android:layout_marginTop="6dp">
+            <ImageView android:layout_width="36dp" android:layout_height="42dp"
+                android:padding="5dp" android:src="@drawable/nav_min_route"
+                android:contentDescription="@null"/>
+            <LinearLayout android:layout_width="0dp" android:layout_weight="1"
+                android:layout_height="wrap_content" android:orientation="vertical"
+                android:paddingStart="12dp">
+                <TextView android:id="@+id/activeNavDistance"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="-- ม." android:textSize="24sp" android:textStyle="bold"
+                    android:textColor="@color/nav_text"/>
+                <TextView android:id="@+id/activeNavInstruction"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="รอข้อมูลเลี้ยวจาก Mapbox..." android:textSize="15sp"
+                    android:textColor="@color/nav_text" android:maxLines="2"
+                    android:ellipsize="end"/>
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:id="@+id/activeNavBottom"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_gravity="bottom" android:layout_margin="12dp"
+        android:orientation="vertical" android:background="@drawable/nav_bg_sheet"
+        android:elevation="9dp" android:padding="16dp" android:visibility="gone">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="นำทางแบบทดลอง · ไม่ใช่ระบบนำทางหลักขณะขับรถ"
+            android:textSize="11sp" android:textColor="@color/nav_warning"
+            android:maxLines="2"/>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:layout_marginTop="6dp"
+            android:gravity="center_vertical">
+            <TextView android:id="@+id/activeNavEta"
+                android:layout_width="0dp" android:layout_weight="1"
+                android:layout_height="wrap_content" android:text="ETA --:--"
+                android:textColor="@color/nav_text" android:textStyle="bold" android:textSize="18sp"/>
+            <TextView android:id="@+id/activeNavRemaining"
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="-- กม." android:textColor="@color/nav_secondary"
+                android:textSize="16sp"/>
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:layout_marginTop="10dp">
+            <Button android:id="@+id/activeNavRecenter"
+                android:layout_width="0dp" android:layout_weight="1"
+                android:layout_height="50dp" android:text="ตำแหน่งของฉัน"
+                android:textAllCaps="false" android:textColor="@color/nav_primary"
+                android:background="@drawable/nav_bg_subtle"/>
+            <Button android:id="@+id/activeNavStop"
+                android:layout_width="0dp" android:layout_weight="1"
+                android:layout_height="50dp" android:layout_marginStart="8dp"
+                android:text="หยุดนำทาง" android:textAllCaps="false"
+                android:textColor="@android:color/white"
+                android:background="@drawable/nav_bg_button"/>
+        </LinearLayout>
+    </LinearLayout>
 
     <!-- Search takes focus only when requested, with recent/favorites and POI suggestions. -->
     <LinearLayout android:id="@+id/searchOverlay"

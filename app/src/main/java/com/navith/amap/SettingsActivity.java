@@ -67,6 +67,15 @@ public final class SettingsActivity extends Activity {
         LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(getColor(R.color.nav_surface));
+        // Android 15/16 edge-to-edge: keep header and navigation controls out of bars.
+        if(android.os.Build.VERSION.SDK_INT>=30) {
+            root.setOnApplyWindowInsetsListener((v,insets)->{
+                android.graphics.Insets bars=insets.getInsets(
+                    android.view.WindowInsets.Type.systemBars());
+                v.setPadding(bars.left,bars.top,bars.right,bars.bottom);
+                return insets;
+            });
+        } else root.setFitsSystemWindows(true);
         setContentView(root);
         LinearLayout header=new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
@@ -152,9 +161,22 @@ public final class SettingsActivity extends Activity {
         row.setBackground(surface(getColor(R.color.nav_card),20));
         LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);
         params.bottomMargin=dp(10);content.addView(row,params);
-        TextView symbolView=label(symbol,25,accent,true);
-        symbolView.setGravity(Gravity.CENTER);
+        int iconRes;
+        switch(key){
+            case "general":iconRes=R.drawable.nav_min_settings;break;
+            case "visual":iconRes=R.drawable.nav_min_layers;break;
+            case "map":iconRes=R.drawable.nav_min_explore;break;
+            case "navigation":iconRes=R.drawable.nav_min_route;break;
+            case "navextra":iconRes=R.drawable.nav_min_route;break;
+            case "offline":iconRes=R.drawable.nav_min_layers;break;
+            case "privacy":iconRes=R.drawable.nav_min_profile;break;
+            default:iconRes=R.drawable.nav_min_settings;break;
+        }
+        ImageView symbolView=new ImageView(this);
+        symbolView.setImageResource(iconRes);
+        symbolView.setPadding(dp(13),dp(13),dp(13),dp(13));
         symbolView.setBackground(surface(getColor(R.color.nav_soft_accent),14));
+        symbolView.setContentDescription(null);
         row.addView(symbolView,new LinearLayout.LayoutParams(dp(52),dp(52)));
         LinearLayout labels=new LinearLayout(this);labels.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams labelParams=new LinearLayout.LayoutParams(0,-2,1f);
@@ -194,7 +216,7 @@ public final class SettingsActivity extends Activity {
                     tx("เลือกไฟล์รูปภาพจากโทรศัพท์","Select a photo from your device"),
                     "marker_custom_hint",false);
                 line(tx("ไอคอนตำแหน่ง","Position icon"),null,
-                    NavigationMarkerFactory.label(this,prefs.getInt("vehicle_icon",6)),()->chooseMarker());
+                    NavigationMarkerFactory.label(this,prefs.getInt("vehicle_icon",8)),()->chooseMarker());
                 toggle(tx("แสดงแผนที่ภายในอาคาร","Indoor maps"),
                     tx("ใช้ได้เฉพาะเมื่อ AMAP มีข้อมูลพื้นที่นั้น","Only if AMAP covers the building"),
                     "indoor",true);
@@ -232,8 +254,9 @@ public final class SettingsActivity extends Activity {
                 section(tx("ประเภทยานพาหนะ","Vehicle profile"));groupStart();
                 segmented(new String[]{tx("รถยนต์","Car"),tx("ไฟฟ้า¹","EV¹"),tx("บรรทุก¹","Truck¹"),tx("จยย.¹","Moto¹"),tx("รถบัส¹","Bus¹")},
                     "vehicle_profile",new String[]{"car","ev","truck","motorcycle","bus"},"car");
-                TextView vehicleNote=label(tx("¹ ต้องใช้ผู้ให้บริการเส้นทางที่รองรับข้อจำกัดเฉพาะรถ ไม่ใช้เส้นทางรถยนต์แทน",
-                    "¹ Requires vehicle-specific routing; car routes will not be substituted."),12,secondary,false);
+                TextView vehicleNote=label(VehicleCapabilityRegistry.availability(this),
+                    13,VehicleCapabilityRegistry.drivingSupported(this)?secondary:
+                        getColor(R.color.nav_warning),false);
                 vehicleNote.setPadding(dp(8),dp(8),dp(8),dp(2));content.addView(vehicleNote);
                 section(tx("ความชอบเส้นทาง","Route preferences"));groupStart();
                 segmented(new String[]{tx("แนะนำ","Recommended"),tx("ระยะสั้น","Shortest"),tx("เวลาสั้น","Fastest")},
@@ -249,14 +272,14 @@ public final class SettingsActivity extends Activity {
                 section(tx("ไอคอนและมุมกล้อง","Marker & camera"));groupStart();
                 line(tx("ไอคอนตำแหน่ง","Position icon"),
                     tx("ใช้เหมือนกันบนมือถือและ Android Auto","Shared by phone and Android Auto"),
-                    NavigationMarkerFactory.label(this,prefs.getInt("vehicle_icon",6)),
+                    NavigationMarkerFactory.label(this,prefs.getInt("vehicle_icon",8)),
                     ()->chooseMarker());
                 line(tx("มุมมองแผนที่","Map perspective"),null,
                     prefs.getBoolean("view3d",true)?"3D":"2D",()->pickMode());
                 toggle(tx("ความลึกและเงาของไอคอน","Marker depth and shadow"),
                     tx("ภาพเวกเตอร์ 2.5D ติดระนาบแผนที่ ไม่ใช่โมเดล 3D",
                        "Ground-aligned 2.5D rendering, not a 3D mesh"),
-                    "marker_perspective",true);
+                    "marker_perspective",false);
                 section(tx("เสียงระหว่างนำทาง","Guidance voice"));groupStart();
                 segmented(new String[]{tx("อัจฉริยะ","Smart"),tx("ละเอียด","Detailed"),tx("กระชับ","Concise"),tx("ปิดเสียง","Mute")},
                     "voice_style",new String[]{"smart","detailed","concise","mute"},"smart");
@@ -328,6 +351,9 @@ public final class SettingsActivity extends Activity {
                 section(tx("การแสดงผลขั้นสูง","Advanced appearance"));groupStart();
                 line(tx("ซูมเริ่มต้น","Default zoom"),null,
                     String.format(Locale.US,"%.0f",prefs.getFloat("zoom",16f)),()->pickZoom());
+                line(tx("ตรวจสอบประสิทธิภาพและ GPS","GPS & route diagnostics"),
+                    tx("ข้อมูลระยะเวลาและความแม่นยำ ไม่บันทึกพิกัด","Timing and accuracy, no coordinates"),
+                    "›",()->showDiagnostics());
                 line(tx("ข้อมูลระบบ","System diagnostics"),
                     tx("เวอร์ชัน SDK และข้อจำกัด","SDK availability and limits"),
                     "›",()->showNavigationDetails());
@@ -392,20 +418,23 @@ public final class SettingsActivity extends Activity {
             bar.addView(chip,cp);
             chip.setClickable(true);chip.setFocusable(true);
             chip.setOnClickListener(v->{
-                if("vehicle_profile".equals(key)&& !"car".equals(value)) {
-                    new AlertDialog.Builder(this)
-                        .setTitle(tx("ยังไม่รองรับยานพาหนะนี้","Vehicle mode unavailable"))
-                        .setMessage(tx("ต้องมี API ที่คำนวณทางตามข้อจำกัดของรถประเภทนี้จริง ๆ ไม่สามารถใช้เส้นทางรถยนต์ทั่วไปทดแทนได้",
-                            "Requires a vehicle-specific routing API; car routing is not a safe substitute."))
-                        .setPositiveButton(tx("ตกลง","OK"),null).show();
-                    return;
-                }
+                // Save every legitimate selection; never substitute car routes.
+                if("vehicle_profile".equals(key))VehicleCapabilityRegistry.select(this,value);
                 SharedPreferences.Editor edit=prefs.edit().putString(key,value);
                 if("map_perspective".equals(key))edit.putBoolean("view3d","3d".equals(value));
                 edit.apply();
                 build();
             });
         }
+    }
+
+    private void showDiagnostics() {
+        new AlertDialog.Builder(this)
+            .setTitle(tx("การวินิจฉัยในเครื่อง","Local diagnostics"))
+            .setMessage(NavigationDiagnostics.summary(this))
+            .setNeutralButton(tx("ล้างข้อมูลวินิจฉัย","Clear diagnostics"),
+                (d,w)->NavigationDiagnostics.clear(this))
+            .setPositiveButton(tx("ปิด","Close"),null).show();
     }
 
     private void openAppPermissions() {
@@ -490,7 +519,7 @@ public final class SettingsActivity extends Activity {
                         pick.addCategory(Intent.CATEGORY_OPENABLE);
                         startActivityForResult(pick,PICK_MARKER);
                     }
-                } else prefs.edit().putBoolean(key,false).putInt("vehicle_icon",6).apply();
+                } else prefs.edit().putBoolean(key,false).putInt("vehicle_icon",8).apply();
             } else prefs.edit().putBoolean(key,c).apply();
         });
         row.addView(sw);
@@ -655,7 +684,7 @@ public final class SettingsActivity extends Activity {
             .setView(scroll)
             .setNegativeButton(tx("ปิด","Close"),null)
             .create();
-        final int selected=prefs.getInt("vehicle_icon",6);
+        final int selected=prefs.getInt("vehicle_icon",8);
         for(int kind:new int[]{6,8,5,0,1,3,2,4,9,7}){
             LinearLayout row=new LinearLayout(this);
             row.setGravity(Gravity.CENTER_VERTICAL);
@@ -665,7 +694,7 @@ public final class SettingsActivity extends Activity {
             ImageView preview=new ImageView(this);
             preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
             preview.setImageBitmap(NavigationMarkerFactory.preview(this,kind,
-                prefs.getBoolean("marker_perspective",true)));
+                prefs.getBoolean("marker_perspective",false)));
             row.addView(preview,new LinearLayout.LayoutParams(dp(64),dp(64)));
             TextView item=label(NavigationMarkerFactory.label(this,kind),16,primary,
                 kind==selected);
