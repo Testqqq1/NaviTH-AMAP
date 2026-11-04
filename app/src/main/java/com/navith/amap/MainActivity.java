@@ -120,6 +120,9 @@ public final class MainActivity extends Activity implements
     private LatLng myLocation;
     private long lastLocationFixUptime = 0L;
     private long lastSharedFixUptime = 0L;
+    private long lastCameraFollowUptime = 0L;
+    private float smoothHeading=Float.NaN;
+    private long lastReportedNavState=0L;
     private float lastLocationAccuracy = Float.MAX_VALUE;
     private boolean followLocation = true;
     private TextView speedText;
@@ -323,7 +326,13 @@ public final class MainActivity extends Activity implements
         View startNavigation=findViewById(R.id.startNavigationButton);
         startNavigation.setVisibility(View.GONE); // Only after a real route preview has been computed.
         startNavigation.setOnClickListener(v -> {
-            if(destination!=null)NavSdkBridge.openRoute(this,destination,destinationName);
+            if(NaviGuidanceStore.isNavigating(this)) {
+                NavSdkBridge.stopNavigation(this);
+                refreshNavigationAction();
+            } else if(hasRoutePreview && destination!=null && NavSdkBridge.isInstalled()) {
+                NavSdkBridge.openRoute(this,destination,destinationName);
+            } else status(tr("คำนวณเส้นทางก่อนเริ่มนำทาง",
+                "Calculate a route before starting navigation"));
         });
         findViewById(R.id.addressLookupButton).setOnClickListener(v -> {
             if(destination!=null)reverseSelectedAddress(destination);
@@ -494,9 +503,33 @@ public final class MainActivity extends Activity implements
         }
         updatePositionMarker(fix);
         if (followLocation && map != null) {
-            float zoom = first ? getViewPrefs().getFloat("zoom", 16f) : map.getCameraPosition().zoom;
-            if (first) map.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation, zoom));
-            else map.moveCamera(CameraUpdateFactory.newLatLng(myLocation));
+            boolean navigating=NaviGuidanceStore.isNavigating(this);
+            float zoom=first?getViewPrefs().getFloat("zoom",16f):map.getCameraPosition().zoom;
+            if(first) {
+                map.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation,zoom));
+            } else if(now-lastCameraFollowUptime>=850L) {
+                lastCameraFollowUptime=now;
+                if(navigating && accuracy<=70f) {
+                    CameraPosition.Builder camera=new CameraPosition.Builder(map.getCameraPosition())
+                        .target(myLocation)
+                        .tilt(getViewPrefs().getBoolean("view3d",true)?58f:0f)
+                        .zoom(Math.max(16.5f,zoom));
+                    if(fix.hasBearing() && fix.hasSpeed() && fix.getSpeed()>1.5f) {
+                        float raw=fix.getBearing();
+                        if(!Float.isFinite(smoothHeading)) smoothHeading=raw;
+                        else {
+                            float change=((raw-smoothHeading+540f)%360f)-180f;
+                            smoothHeading=(smoothHeading+Math.max(-24f,Math.min(24f,change*0.35f))+360f)%360f;
+                        }
+                        camera.bearing(smoothHeading);
+                    }
+                    map.animateCamera(CameraUpdateFactory.newCameraPosition(camera.build()));
+                } else {
+                    // When accuracy is poor, never snap/rotate as if GPS were exact.
+                    if(!navigating && accuracy<=100f)
+                        map.moveCamera(CameraUpdateFactory.newLatLng(myLocation));
+                }
+            }
         }
         if (gpsStatus != null) {
             boolean navigating=NaviGuidanceStore.fresh(this)!=null;
@@ -522,18 +555,23 @@ public final class MainActivity extends Activity implements
         if (map == null || myLocation == null) return;
         if (myMarker == null) {
             myMarker = map.addMarker(new MarkerOptions().position(myLocation)
-                    .title("ตำแหน่งปัจจุบัน").icon(currentMarkerIcon()));
+                .title(getString(R.string.my_position)).anchor(0.5f,0.5f)
+                .setFlat(true).icon(currentMarkerIcon()).zIndex(8f));
         } else {
             myMarker.setPosition(myLocation);
         }
-        if (fix != null && fix.hasBearing() && fix.hasSpeed() && fix.getSpeed() > 2f) {
-            myMarker.setRotateAngle(360f - fix.getBearing());
-        }
+        // AMap ground-flat marker inherits the map pitch/bearing. Rotate relative
+        // to geographical north, not relative to the screen/phone orientation.
+        if(fix!=null && fix.hasBearing() && fix.hasSpeed() &&
+            fix.getSpeed()>1.5f && fix.hasAccuracy() && fix.getAccuracy()<=70f)
+            myMarker.setRotateAngle(NavigationMarkerFactory.angleForBearing(fix.getBearing()));
+        myMarker.setAlpha(fix!=null && fix.hasAccuracy() &&
+            fix.getAccuracy()>80f ? 0.60f : 1f);
         if(fix!=null && fix.hasAccuracy() && fix.getAccuracy()>0){
             double radius=Math.min(250.0,Math.max(5.0,fix.getAccuracy()));
             if(accuracyRing==null){
                 accuracyRing=map.addCircle(new CircleOptions().center(myLocation).radius(radius)
-                    .fillColor(0x132B83D5).strokeColor(0x552B83D5)
+                    .fillColor(0x17087F77).strokeColor(0x66087F77)
                     .strokeWidth(dp(1)).zIndex(0.1f));
             }else{
                 accuracyRing.setCenter(myLocation);
@@ -1113,33 +1151,14 @@ public final class MainActivity extends Activity implements
         map.moveCamera(CameraUpdateFactory.newCameraPosition(
                 new CameraPosition.Builder(current).tilt(threed ? 55f : 0f).build()));
         // Map controls stay in the two-button surface; individual layers are edited in a sheet.
-        if (myMarker != null) myMarker.setIcon(currentMarkerIcon());
+        if (myMarker != null) {
+            myMarker.setFlat(true);
+            myMarker.setIcon(currentMarkerIcon());
+        }
     }
 
     private BitmapDescriptor currentMarkerIcon() {
-        int kind = getViewPrefs().getInt("vehicle_icon", 6);
-        if (kind == 7) {
-            File file = new File(getFilesDir(), "navith_marker.png");
-            if (file.exists()) {
-                Bitmap b = BitmapFactory.decodeFile(file.getAbsolutePath());
-                if (b != null) return BitmapDescriptorFactory.fromBitmap(b);
-            }
-        }
-        String[] icons = {"🚗", "🚙", "🚐", "🚙", "🛻", "🏎", "➤"};
-        String glyph = icons[Math.max(0, Math.min(6, kind))];
-        TextView iconView = new TextView(this);
-        iconView.setText(glyph);
-        iconView.setTextSize(18f);
-        iconView.setTextColor(Color.rgb(8,127,118));
-        iconView.setTypeface(null, Typeface.BOLD);
-        iconView.setGravity(Gravity.CENTER);
-        iconView.setPadding(dp(3), dp(3), dp(3), dp(3));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.WHITE);
-        bg.setCornerRadius(dp(16));
-        bg.setStroke(dp(1), Color.rgb(8,127,118));
-        iconView.setBackground(bg);
-        return BitmapDescriptorFactory.fromView(iconView);
+        return NavigationMarkerFactory.make(this,getViewPrefs());
     }
 
     private void chooseMapTheme() {
@@ -1704,7 +1723,34 @@ public final class MainActivity extends Activity implements
             applyMapPreferences();
             updateLocationMarkerVisibility();
         }
+        if (initialized) {
+            refreshNavigationAction();
+            showNavigationStateOnce();
+        }
         if (initialized && hasLocationPermission()) locateOnce();
+    }
+
+    private void refreshNavigationAction() {
+        if(!initialized || destination==null)return;
+        Button b=findViewById(R.id.startNavigationButton);
+        if(b==null)return;
+        boolean running=NaviGuidanceStore.isNavigating(this);
+        b.setVisibility(NavSdkBridge.isInstalled() &&
+            (running || hasRoutePreview) &&
+            modeGroup.getCheckedRadioButtonId()!=R.id.modeWalk ? View.VISIBLE:View.GONE);
+        b.setText(running ? tr("หยุดนำทาง","Stop navigation")
+            : tr("เริ่มนำทาง","Start navigation"));
+        b.setContentDescription(b.getText());
+    }
+    private void showNavigationStateOnce() {
+        long stamp=com.navith.amap.car.TripStore.prefs(this).getLong("navi_phase_at",0L);
+        if(stamp==0 || stamp==lastReportedNavState)return;
+        lastReportedNavState=stamp;
+        String phase=NaviGuidanceStore.phase(this);
+        if("error".equals(phase) || "arrived".equals(phase)) {
+            String message=NaviGuidanceStore.message(this);
+            if(!message.isEmpty())Toast.makeText(this,message,Toast.LENGTH_LONG).show();
+        }
     }
 
     @Override protected void onPause() {
