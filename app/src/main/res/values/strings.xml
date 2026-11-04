@@ -35,4 +35,5 @@
     <string name="english">English</string>
     <string name="thai">ไทย</string>
     <string name="not_yet_available">ยังไม่รองรับในรุ่นนี้</string>
+    <string name="address_lookup">ดูที่อยู่จากพิกัด</string>
 </resources>
