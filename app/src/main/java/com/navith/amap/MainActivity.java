@@ -343,6 +343,12 @@ public final class MainActivity extends Activity implements
                 NavSdkBridge.stopNavigation(this);
                 refreshNavigationAction();
             } else if(hasRoutePreview && destination!=null && NavSdkBridge.isInstalled()) {
+                if(!hasFreshAccurateFix()) {
+                    status(tr("GPS ยังไม่พร้อม โปรดรอตำแหน่งที่แม่นยำก่อนนำทาง",
+                        "GPS is not ready. Wait for an accurate location before starting."));
+                    locateOnce();
+                    return;
+                }
                 NavSdkBridge.openRoute(this,destination,destinationName,destinationPoiId);
             } else status(tr("คำนวณเส้นทางก่อนเริ่มนำทาง",
                 "Calculate a route before starting navigation"));
@@ -946,13 +952,21 @@ public final class MainActivity extends Activity implements
         status(tr("เลือกจุดหมายแล้ว: ","Destination: ")+label);
     }
 
+    /** A saved coordinate is not a usable live navigation origin. */
+    private boolean hasFreshAccurateFix() {
+        long age=SystemClock.elapsedRealtime()-lastLocationFixUptime;
+        return myLocation!=null && lastLocationFixUptime>0 &&
+            age>=0 && age<=15000L && lastLocationAccuracy<=100f;
+    }
+
     private void calculateRoute() {
         if (destination == null) {
             status(tr("เลือกจุดหมายก่อน","Choose a destination first"));
             return;
         }
-        if (myLocation == null) {
-            status(tr("ต้องมีพิกัดปัจจุบัน • กดตำแหน่งของฉัน","Current location needed; tap My location"));
+        if (!hasFreshAccurateFix()) {
+            status(tr("GPS ไม่พร้อมหรือพิกัดเก่า • กำลังค้นหาตำแหน่งใหม่",
+                "GPS unavailable, inaccurate or stale · acquiring a fresh fix"));
             if (hasLocationPermission()) locateOnce();
             else { locationRequested = false; askForLocation(); }
             return;
