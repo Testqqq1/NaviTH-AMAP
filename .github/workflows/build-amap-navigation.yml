@@ -10,6 +10,10 @@ on:
       - 'app/src/main/java/com/navith/amap/MainActivity.java'
       - 'app/src/main/res/layout/activity_main.xml'
       - 'app/src/main/AndroidManifest.xml'
+      - 'app/build.gradle'
+      - 'app/src/main/java/com/navith/amap/car/**'
+      - 'app/src/main/java/com/navith/amap/McpPlacesClient.java'
+      - 'app/src/main/java/com/navith/amap/SettingsActivity.java'
 
 permissions:
   contents: read
