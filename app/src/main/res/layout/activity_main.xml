@@ -445,6 +445,10 @@
                     android:layout_height="48dp" android:minHeight="48dp"
                     android:layout_marginStart="24dp" android:buttonTint="@color/nav_primary"
                     android:text="@string/walk" android:textSize="14sp"/>
+                <RadioButton android:id="@+id/modeCycle" android:layout_width="wrap_content"
+                    android:layout_height="48dp" android:minHeight="48dp"
+                    android:layout_marginStart="12dp" android:buttonTint="@color/nav_primary"
+                    android:text="จักรยาน" android:textSize="14sp"/>
             </RadioGroup>
 
             <TextView android:id="@+id/addressLookupButton"
