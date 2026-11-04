@@ -20,7 +20,7 @@ required={"activeNavTop","activeNavBottom","activeNavPhase","activeNavInstructio
 assert all("@+id/"+id in ids for id in required), "Active navigation or home IDs missing"
 checks={
     "vehicle choices are persisted":'VehicleCapabilityRegistry.select(this,value)' in settings,
-    "no vehicle fallback":'VehicleCapabilityRegistry.drivingSupported(this)' in code and 'return CAR;' in vehicles,
+    "no vehicle fallback":'VehicleCapabilityRegistry.drivingSupported(this)' in code and 'CAR.equals(selected(c))' in vehicles,
     "unsupported vehicle status inline":"VehicleCapabilityRegistry.availability(this)" in settings,
     "navigation test scene":"showActiveNavigation(true)" in code and "showActiveNavigation(false)" in code,
     "navigation transitions":"guidanceScene.rerouting()" in code and "guidanceScene.rerouted()" in code,
