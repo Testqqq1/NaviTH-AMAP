@@ -5,6 +5,9 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.Point;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.os.Handler;
@@ -106,6 +109,8 @@ public final class MainActivity extends Activity implements
     private String destinationName = "";
     private Marker destinationMarker;
     private Marker myMarker;
+    private final List<Marker> searchMapMarkers=new ArrayList<>();
+    private final List<PoiItem> searchPoiResults=new ArrayList<>();
     private Polyline routeLine;
     private static final int PICK_MARKER_IMAGE = 3001;
     private boolean initialized = false;
@@ -277,6 +282,13 @@ public final class MainActivity extends Activity implements
         map.setOnMapTouchListener(e -> {
             if(e.getAction()==MotionEvent.ACTION_DOWN)followLocation=false;
         });
+        map.setOnCameraChangeListener(new AMap.OnCameraChangeListener() {
+            @Override public void onCameraChange(CameraPosition pos) {}
+            @Override public void onCameraChangeFinish(CameraPosition pos) {
+                // Group previews only when the camera is stationary.
+                updateSearchMarkers();
+            }
+        });
 
         map.setOnMapLongClickListener(latLng -> chooseDestination(latLng, "ตำแหน่งที่เลือกบนแผนที่"));
         map.setOnMarkerClickListener(marker -> {
@@ -286,6 +298,18 @@ public final class MainActivity extends Activity implements
                 return true;
             }
             Object tag = marker.getObject();
+            if (tag instanceof MapCluster) {
+                MapCluster cluster=(MapCluster)tag;
+                if(cluster.places.size()==1) {
+                    PoiItem item=cluster.places.get(0);
+                    chooseDestination(toLatLng(item.getLatLonPoint()),item.getTitle());
+                } else {
+                    followLocation=false;
+                    map.animateCamera(CameraUpdateFactory.newLatLngZoom(cluster.center,
+                        Math.min(19f,map.getCameraPosition().zoom+2f)));
+                }
+                return true;
+            }
             if (tag instanceof PoiItem) {
                 PoiItem poi = (PoiItem) tag;
                 if (poi.getLatLonPoint() != null) {
@@ -504,12 +528,15 @@ public final class MainActivity extends Activity implements
                 resultsList.addView(msg);
                 return;
             }
+            searchPoiResults.clear();
             int count=0;
             for(PoiItem item:result.getPois()){
                 if(item.getLatLonPoint()==null)continue;
+                searchPoiResults.add(item);
                 addResultRow(item);
                 if(++count==10)break;
             }
+            updateSearchMarkers();
         });
     }
 
@@ -553,6 +580,7 @@ public final class MainActivity extends Activity implements
     }
 
     private void chooseDestination(LatLng point, String label) {
+        clearSearchMarkers();
         destination = point;
         destinationName = label;
         rememberPlace(point,label);
@@ -687,6 +715,8 @@ public final class MainActivity extends Activity implements
         clearRouteLine();
         destination = null;
         destinationName = "";
+        searchPoiResults.clear();
+        clearSearchMarkers();
         TripStore.clearDestination(this);
         if (destinationMarker != null) {
             destinationMarker.remove();
@@ -915,6 +945,70 @@ public final class MainActivity extends Activity implements
     }
 
 
+
+    private static final class MapCluster {
+        final List<PoiItem> places = new ArrayList<>();
+        LatLng center;
+    }
+    private void clearSearchMarkers() {
+        for(Marker m:searchMapMarkers)if(m!=null)m.remove();
+        searchMapMarkers.clear();
+    }
+    private float placeColor(PoiItem item) {
+        String n=item.getTitle()==null?"":item.getTitle().toLowerCase(java.util.Locale.ROOT);
+        if(n.contains("hospital")||n.contains("โรงพยาบาล"))return BitmapDescriptorFactory.HUE_RED;
+        if(n.contains("restaurant")||n.contains("อาหาร")||n.contains("ร้าน"))return BitmapDescriptorFactory.HUE_ORANGE;
+        if(n.contains("hotel")||n.contains("โรงแรม"))return BitmapDescriptorFactory.HUE_VIOLET;
+        if(n.contains("park")||n.contains("สวน")||n.contains("วัด"))return BitmapDescriptorFactory.HUE_GREEN;
+        return BitmapDescriptorFactory.HUE_AZURE;
+    }
+    private BitmapDescriptor clusterIcon(int count) {
+        TextView marker=new TextView(this);
+        marker.setText(Integer.toString(count));
+        marker.setTextColor(Color.WHITE);marker.setTextSize(14);
+        marker.setGravity(Gravity.CENTER);
+        marker.setTypeface(null,Typeface.BOLD);
+        GradientDrawable bg=new GradientDrawable();
+        bg.setColor(getColor(R.color.nav_primary));
+        bg.setCornerRadius(dp(22));
+        marker.setBackground(bg);
+        marker.setWidth(dp(42));marker.setHeight(dp(42));
+        return BitmapDescriptorFactory.fromView(marker);
+    }
+    private void updateSearchMarkers() {
+        if(map==null)return;
+        if(destination!=null || searchPoiResults.isEmpty()
+                || !getViewPrefs().getBoolean("show_poi_results",true)){
+            clearSearchMarkers();return;
+        }
+        clearSearchMarkers();
+        float zoom=map.getCameraPosition().zoom;
+        if(zoom<10.5f)return;
+        int cell=dp(zoom<14f?84:62);
+        Map<String,MapCluster> clusters=new LinkedHashMap<>();
+        try{
+            for(PoiItem p:searchPoiResults){
+                if(p.getLatLonPoint()==null)continue;
+                LatLng pos=toLatLng(p.getLatLonPoint());
+                Point pixel=map.getProjection().toScreenLocation(pos);
+                String key=(pixel.x/cell)+":"+(pixel.y/cell);
+                MapCluster c=clusters.get(key);
+                if(c==null){c=new MapCluster();c.center=pos;clusters.put(key,c);}
+                c.places.add(p);
+            }
+            for(MapCluster c:clusters.values()){
+                PoiItem first=c.places.get(0);
+                MarkerOptions opt=new MarkerOptions().position(c.center)
+                  .title(c.places.size()>1?c.places.size()+" places":first.getTitle())
+                  .icon(c.places.size()>1?clusterIcon(c.places.size())
+                      :BitmapDescriptorFactory.defaultMarker(placeColor(first)));
+                Marker marker=map.addMarker(opt);
+                marker.setObject(c);
+                searchMapMarkers.add(marker);
+            }
+        }catch(Exception e){clearSearchMarkers();}
+    }
+
     private void toggleRouteExpanded() {
         routeOpen=!routeOpen;
         routeExpanded.setVisibility(routeOpen?View.VISIBLE:View.GONE);
@@ -938,6 +1032,7 @@ public final class MainActivity extends Activity implements
         searchOverlay.setVisibility(View.GONE);
         if(pendingSearch!=null)searchHandler.removeCallbacks(pendingSearch);
         hideKeyboard();
+        if(destination==null)updateSearchMarkers();
     }
 
     private JSONArray saved(String key) {
