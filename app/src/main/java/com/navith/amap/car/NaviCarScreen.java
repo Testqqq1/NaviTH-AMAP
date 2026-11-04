@@ -6,6 +6,8 @@ import android.content.Context;
 import android.content.res.Configuration;
 import com.amap.api.maps.model.CameraPosition;
 import com.navith.amap.NaviLocale;
+import com.navith.amap.MapStyleImporter;
+import com.amap.api.maps.model.CustomMapStyleOptions;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Rect;
@@ -265,6 +267,16 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
                 ("night".equals(theme) || ("auto".equals(theme) && dark))
                     ? AMap.MAP_TYPE_NIGHT : AMap.MAP_TYPE_NORMAL;
         map.setMapType(type);
+        if(MapStyleImporter.installed(getCarContext()) && type==AMap.MAP_TYPE_NORMAL) {
+            java.io.File dir=MapStyleImporter.directory(getCarContext());
+            CustomMapStyleOptions style=new CustomMapStyleOptions().setEnable(true)
+                .setStyleDataPath(new java.io.File(dir,"style.data").getAbsolutePath());
+            java.io.File extra=new java.io.File(dir,"style_extra.data");
+            java.io.File textures=new java.io.File(dir,"textures.zip");
+            if(extra.exists())style.setStyleExtraPath(extra.getAbsolutePath());
+            if(textures.exists())style.setStyleTexturePath(textures.getAbsolutePath());
+            map.setCustomMapStyle(style);
+        } else map.setCustomMapStyle(new CustomMapStyleOptions().setEnable(false));
         map.setTrafficEnabled(viewPrefs.getBoolean("traffic",true));
         boolean third=viewPrefs.getBoolean("view3d",true);
         map.showBuildings(third && viewPrefs.getBoolean("buildings",true));
