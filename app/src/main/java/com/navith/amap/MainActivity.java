@@ -326,7 +326,6 @@ public final class MainActivity extends Activity implements
             if(destination==null) {
                 status(tr("เลือกจุดหมายก่อน","Choose a destination first")); return;
             }
-            if(!hasRoutePreview) { calculateRoute(); return; }
             boolean walking=modeGroup.getCheckedRadioButtonId()==R.id.modeWalk;
             if(!walking && NavSdkBridge.isInstalled()) {
                 NavSdkBridge.openRoute(this,destination,destinationName);
@@ -346,12 +345,12 @@ public final class MainActivity extends Activity implements
             if(alt!=null)alt.removeAllViews();
             if (destination != null) {
                 hasRoutePreview=false;
-                findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
+                refreshNavigationAction();
                 routeSummary.setText(getString(R.string.view_route));
                 Button action=findViewById(R.id.routeButton);
                 action.setText(R.string.view_route);
-                action.setBackgroundResource(R.drawable.nav_bg_button);
-                action.setTextColor(Color.WHITE);
+                action.setBackgroundResource(R.drawable.nav_bg_subtle);
+                action.setTextColor(getColor(R.color.nav_primary));
             }
         });
         map.setOnMapTouchListener(e -> {
@@ -875,10 +874,10 @@ public final class MainActivity extends Activity implements
         destinationText.setText(label);
         routeSummary.setText(tr("เลือกจุดหมายแล้ว • ดูเส้นทาง","Destination selected · View route"));
         hasRoutePreview=false;
-        findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
+        refreshNavigationAction();
         Button routeAction=findViewById(R.id.routeButton);
-        routeAction.setBackgroundResource(R.drawable.nav_bg_button);
-        routeAction.setTextColor(Color.WHITE);
+        routeAction.setBackgroundResource(R.drawable.nav_bg_subtle);
+        routeAction.setTextColor(getColor(R.color.nav_primary));
         routePanel.setVisibility(View.VISIBLE);
         homePanel.setVisibility(View.GONE);
         routeExpanded.setVisibility(View.GONE);
@@ -908,7 +907,7 @@ public final class MainActivity extends Activity implements
         TripStore.clearRoute(this);
         routeSummary.setText(tr("กำลังคำนวณเส้นทาง…","Calculating route…"));
         hasRoutePreview=false;
-        findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
+        refreshNavigationAction();
         try {
             RouteSearch.FromAndTo fromAndTo = new RouteSearch.FromAndTo(
                     toPoint(myLocation), toPoint(destination));
@@ -1030,11 +1029,7 @@ public final class MainActivity extends Activity implements
         routeSummary.setText(mode + "  •  " + km + "  •  " + time);
         ((Button)findViewById(R.id.routeButton)).setText(R.string.change_route);
         hasRoutePreview=true;
-        Button startAction=findViewById(R.id.startNavigationButton);
-        startAction.setVisibility(View.VISIBLE);
-        startAction.setText(nativeNavigation ? R.string.start_navigation_test
-            : walking ? R.string.open_walking_navigation : R.string.open_external_navigation);
-        startAction.setContentDescription(startAction.getText());
+        refreshNavigationAction();
         Button routeAction=findViewById(R.id.routeButton);
         routeAction.setBackgroundResource(R.drawable.nav_bg_subtle);
         routeAction.setTextColor(getColor(R.color.nav_primary));
@@ -1044,9 +1039,26 @@ public final class MainActivity extends Activity implements
 
     private void routeFailed(int code) {
         hasRoutePreview=false;
-        findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
-        routeSummary.setText(tr("ไม่พบเส้นทาง (","No route (")+code+tr(") • ตรวจสอบพื้นที่บริการ",") · Check coverage"));
-        status(tr("อาจไม่มีข้อมูลเส้นทางในพื้นที่นี้","Route data may be unavailable here"));
+        refreshNavigationAction();
+        routeSummary.setText(tr("AMAP ไม่พบเส้นทาง (","AMAP route unavailable (")+code+
+            tr(") • ยังสามารถลองเริ่มนำทางได้",") · You can still try navigation"));
+        status(tr("ข้อมูลเส้นทางอาจไม่ครอบคลุมพื้นที่นี้","Routing coverage may be unavailable here"));
+    }
+
+    private void refreshNavigationAction() {
+        Button start=findViewById(R.id.startNavigationButton);
+        if(start==null)return;
+        if(destination==null) {
+            start.setVisibility(View.GONE);
+            return;
+        }
+        boolean walking=modeGroup!=null && modeGroup.getCheckedRadioButtonId()==R.id.modeWalk;
+        int label=walking ? R.string.open_walking_navigation
+            : NavSdkBridge.isInstalled() ? R.string.start_navigation_test
+            : R.string.open_external_navigation;
+        start.setText(label);
+        start.setContentDescription(getString(label));
+        start.setVisibility(View.VISIBLE);
     }
 
     private void appendPolyline(List<LatLng> output, List<LatLonPoint> path) {
