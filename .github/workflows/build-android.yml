@@ -66,6 +66,7 @@ jobs:
       - name: Build debug APK
         env:
           AMAP_KEY: ${{ secrets.AMAP_KEY }}
+          MAPBOX_PUBLIC_TOKEN: ${{ secrets.MAPBOX_PUBLIC_TOKEN }}
         run: gradle --no-daemon :app:assembleDebug --stacktrace
 
       - name: Upload APK
