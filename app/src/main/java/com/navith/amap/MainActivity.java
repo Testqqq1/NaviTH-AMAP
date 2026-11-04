@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.pm.PackageManager;
+import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.graphics.Point;
 import java.util.Map;
@@ -207,6 +208,7 @@ public final class MainActivity extends Activity implements
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         activeLanguage=NaviLocale.language(this);
+        applySystemChromePreferences();
         if (getSharedPreferences("navith_consent", MODE_PRIVATE).getBoolean(CONSENT_PREFS, false)) {
             initializeApp(state);
         } else {
@@ -295,6 +297,43 @@ public final class MainActivity extends Activity implements
         renderHomeRecent();
 
         findViewById(R.id.searchBarButton).setOnClickListener(v -> openSearch());
+        findViewById(R.id.homeSearchButton).setOnClickListener(v -> openSearch());
+        findViewById(R.id.homeQuickDrive).setOnClickListener(v -> chooseTravelMode(R.id.modeDrive));
+        findViewById(R.id.homeQuickWalk).setOnClickListener(v -> chooseTravelMode(R.id.modeWalk));
+        findViewById(R.id.homeQuickCycle).setOnClickListener(v -> chooseTravelMode(R.id.modeCycle));
+        findViewById(R.id.homeQuickTransit).setOnClickListener(v -> showUnavailableTravelMode(
+            tr("ขนส่งสาธารณะ","Transit"),
+            tr("ยังไม่มีข้อมูลตารางเดินรถและ API เส้นทางขนส่งสาธารณะในไทย",
+                "A transit schedule and route provider for Thailand has not been connected.")));
+        findViewById(R.id.homeQuickRide).setOnClickListener(v -> showUnavailableTravelMode(
+            "Ride",tr("ยังไม่ได้เชื่อมผู้ให้บริการเรียกรถ","Ride-hailing service is not connected.")));
+        findViewById(R.id.homeQuickMoto).setOnClickListener(v -> showUnavailableTravelMode(
+            tr("มอเตอร์ไซค์","Motorcycle"),
+            tr("ยังไม่มีข้อมูลข้อจำกัดการเดินทางสำหรับมอเตอร์ไซค์ ห้ามใช้เส้นทางรถยนต์แทน",
+                "Motorcycle-specific routing is unavailable; car routes are not a safe substitute.")));
+        findViewById(R.id.homeQuickRoute).setOnClickListener(v -> openSearch());
+        findViewById(R.id.homeQuickPlaces).setOnClickListener(v -> openSearch());
+        findViewById(R.id.homeQuickSaved).setOnClickListener(v -> { openSearch(); renderSavedPlaces(); });
+        findViewById(R.id.homeQuickLayers).setOnClickListener(v -> showLayers());
+        findViewById(R.id.homeQuickSettings).setOnClickListener(v ->
+            startActivity(new Intent(this,SettingsActivity.class)));
+        findViewById(R.id.tabHome).setOnClickListener(v -> {
+            if(searchOverlay.getVisibility()==View.VISIBLE)closeSearch();
+            if(destination!=null)clearDestination();
+            recenter();
+        });
+        findViewById(R.id.tabExplore).setOnClickListener(v -> openSearch());
+        findViewById(R.id.tabTrips).setOnClickListener(v -> {
+            if(destination!=null) {
+                if(!routeOpen)toggleRouteExpanded();
+            } else openSearch();
+        });
+        findViewById(R.id.tabSaved).setOnClickListener(v -> {openSearch();renderSavedPlaces();});
+        findViewById(R.id.tabMine).setOnClickListener(v ->
+            startActivity(new Intent(this,SettingsActivity.class)));
+        findViewById(R.id.zoomPlusButton).setOnClickListener(v -> zoomMap(1f));
+        findViewById(R.id.zoomMinusButton).setOnClickListener(v -> zoomMap(-1f));
+        applyHomeChrome();
         findViewById(R.id.voiceSearchButton).setOnClickListener(v -> voiceSearch());
         findViewById(R.id.homeGrabber).setOnClickListener(v -> toggleHomeExpanded());
         findViewById(R.id.recentShortcut).setOnClickListener(v -> {
@@ -572,7 +611,8 @@ public final class MainActivity extends Activity implements
                             float change=((raw-smoothHeading+540f)%360f)-180f;
                             smoothHeading=(smoothHeading+Math.max(-24f,Math.min(24f,change*0.35f))+360f)%360f;
                         }
-                        camera.bearing(smoothHeading);
+                        camera.bearing("north".equals(getViewPrefs().getString("camera_direction","heading"))
+                            ? 0f : smoothHeading);
                     }
                     map.animateCamera(CameraUpdateFactory.newCameraPosition(camera.build()));
                 } else {
@@ -959,6 +999,7 @@ public final class MainActivity extends Activity implements
         closeSearch();
         searchBarTitle.setText(label);
         TripStore.setDestination(this, point, label);
+        applyHomeChrome();
         clearRouteLine();
         if (destinationMarker != null) destinationMarker.remove();
         destinationMarker = map.addMarker(new MarkerOptions().position(point)
@@ -1246,6 +1287,7 @@ public final class MainActivity extends Activity implements
         }
         routePanel.setVisibility(View.GONE);
         homePanel.setVisibility(View.VISIBLE);
+        applyHomeChrome();
         renderHomeRecent();
         hasRoutePreview=false;
         findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
@@ -1303,6 +1345,15 @@ public final class MainActivity extends Activity implements
         } else map.setCustomMapStyle(new CustomMapStyleOptions().setEnable(false));
         map.setTrafficEnabled(p.getBoolean("traffic", true));
         boolean threed = p.getBoolean("view3d", true);
+        try {
+            map.getUiSettings().setRotateGesturesEnabled(
+                !(p.getBoolean("lock_2d",false) && !threed));
+        }catch(RuntimeException ignored){}
+        // Indoor data availability is controlled by the map provider.
+        try { map.showIndoorMap(p.getBoolean("indoor",true)); }
+        catch(RuntimeException ignored) {}
+        View zoom=findViewById(R.id.zoomButtons);
+        if(zoom!=null)zoom.setVisibility(p.getBoolean("zoom_controls",true)?View.VISIBLE:View.GONE);
         map.showBuildings(threed && p.getBoolean("buildings",true));
         map.showMapText(p.getBoolean("labels",true));
         CameraPosition current = map.getCameraPosition();
@@ -1317,6 +1368,57 @@ public final class MainActivity extends Activity implements
 
     private BitmapDescriptor currentMarkerIcon() {
         return NavigationMarkerFactory.make(this,getViewPrefs());
+    }
+
+
+    private void chooseTravelMode(int radioId) {
+        if(radioId==R.id.modeCycle && !MapboxDirectionsClient.configured(this)) {
+            showUnavailableTravelMode(tr("จักรยาน","Cycling"),
+                tr("โหมดจักรยานต้องเปิด Mapbox Public Token ก่อน",
+                   "Cycling needs a configured Mapbox public token."));
+            return;
+        }
+        if(modeGroup!=null)modeGroup.check(radioId);
+        openSearch();
+    }
+
+    private void showUnavailableTravelMode(String title,String detail) {
+        new AlertDialog.Builder(this).setTitle(title)
+            .setMessage(detail)
+            .setPositiveButton(tr("เข้าใจแล้ว","OK"),null).show();
+    }
+
+    private void zoomMap(float amount) {
+        if(map==null)return;
+        followLocation=false;
+        CameraPosition cp=map.getCameraPosition();
+        map.animateCamera(CameraUpdateFactory.zoomTo(
+            Math.max(3f,Math.min(20f,cp.zoom+amount))));
+    }
+
+    private void applyHomeChrome() {
+        View top=findViewById(R.id.topSearchBar);
+        View homeSearch=findViewById(R.id.homeSearchButton);
+        if(top==null || homeSearch==null)return;
+        boolean bottom=getViewPrefs().getBoolean("home_search_bottom",true);
+        boolean onHome=destination==null && homePanel!=null &&
+            homePanel.getVisibility()==View.VISIBLE;
+        top.setVisibility(onHome && bottom?View.GONE:View.VISIBLE);
+        homeSearch.setVisibility(bottom?View.VISIBLE:View.GONE);
+    }
+
+    private void applySystemChromePreferences() {
+        SharedPreferences p=getSharedPreferences("navith_view",MODE_PRIVATE);
+        String orientation=p.getString("screen_orientation","auto");
+        int desired="portrait".equals(orientation)?ActivityInfo.SCREEN_ORIENTATION_PORTRAIT:
+            "landscape".equals(orientation)?ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE:
+                ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
+        if(getRequestedOrientation()!=desired)setRequestedOrientation(desired);
+        if(p.getBoolean("keep_screen_on",false)){
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        } else {
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
     }
 
     private void chooseMapTheme() {
@@ -1861,7 +1963,7 @@ public final class MainActivity extends Activity implements
         }
         statusText.setText(text);
         statusText.setTranslationY(homePanel!=null &&
-            homePanel.getVisibility()==View.VISIBLE ? -dp(homeOpen?290:160):0);
+            homePanel.getVisibility()==View.VISIBLE ? -dp(homeOpen?520:330):0);
         statusText.setVisibility(View.VISIBLE);
         dismissStatus=()->statusText.setVisibility(View.GONE);
         uiHandler.postDelayed(dismissStatus,3200L);
@@ -1878,7 +1980,9 @@ public final class MainActivity extends Activity implements
         }
         if (mapView != null) mapView.onResume();
         if (initialized && map != null) {
+            applySystemChromePreferences();
             applyMapPreferences();
+            applyHomeChrome();
             updateLocationMarkerVisibility();
         }
         if (initialized) {
