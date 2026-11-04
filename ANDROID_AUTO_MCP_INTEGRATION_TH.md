@@ -14,6 +14,46 @@ Improvements in this integration:
 - Map markers/route previews are drawn using the AMAP Native SDK, **not a WebView**.
 - Still uses host-rendered templates and handles car restrictions; it is not a 1:1 pixel mirror of the phone.
 
+## Real-car installation: Google Play is required for Car App Library
+
+**Important:** A locally sideloaded GitHub debug APK may run on the phone or
+Android Auto Desktop Head Unit (DHU), but **Android Auto's Developer Settings →
+Unknown sources does NOT exempt apps built with Android for Cars App Library**.
+Google's documented path to test on actual vehicle displays is **Google Play
+Internal App Sharing** or an **Internal Test Track**. Merely plugging in USB
+after sideloading may leave NaviTH absent from the car launcher.
+
+- Source: https://developer.android.com/training/cars/testing
+- Play Internal App Sharing accepts *debuggable* APKs and signs them again with
+  an **Internal test certificate**, see:
+  https://support.google.com/googleplay/android-developer/answer/9844679
+
+### Special AMAP SHA-1 requirement
+
+The AMAP Android Key is restricted by Android package + signing-certificate SHA-1.
+Play Internal App Sharing **re-signs the APK with a different certificate**.
+If the APK continues to contain the key for the GitHub demo keystore, AMAP
+may fail with an invalid signature/key even when the Android Auto UI launches.
+
+1. With an authorized Play Console account, first upload a disposable test APK
+   to Internal App Sharing to generate an Internal test certificate.
+2. In Play Console → Internal testing → Internal app sharing → Internal test
+   certificate, copy the certificate **SHA-1**.
+3. In the AMAP Android developer console, create a dedicated Android Key
+   for package `com.navith.amap` with this SHA-1 and SDK entitlements.
+4. In GitHub repository Actions Secrets, add **`AMAP_KEY_PLAY`** containing
+   that Android Key. Do not paste credentials into Git history or issues.
+5. GitHub Actions → **Build NaviTH for Play Internal App Sharing** →
+   Run workflow. Download `NaviTH-Play-Internal-Sharing-APK`.
+   This workflow does **not** upload anything to Google Play automatically.
+6. Upload this APK manually to Internal App Sharing, get the Play testing link,
+   and install from that Play link on your connected phone.
+7. If the debug APK was already installed directly, you may need to uninstall
+   it first due to the different signing certificate; this removes local data.
+
+If the user does not have access to Play Console, Android Auto **DHU
+testing** is the supported immediate test; real-car discovery is not assured.
+
 ## What is NOT completed
 
 - **Turn-by-turn guidance on Android Auto** has not been implemented. `NavSdkBridge` opens the official AMAP Navigation route planner **on the phone only**, in the experimental Navigation APK. It does NOT emit verified maneuvers to Car App `NavigationTemplate` and does not provide Android Auto navigation voice guidance yet.
@@ -52,7 +92,7 @@ No remote server or Web Service credential can be provisioned automatically by j
 ### Android Auto device tests to do
 
 1. Install APK on phone with a matching debug signing key; grant Precise Location and accept the AMAP privacy prompt.
-2. Connect Android Auto USB or wireless; launch NaviTH Maps from the launcher. For non-Play debug apps, developer configuration/host settings may vary. DHU is preferred for first testing.
+2. For DHU, install the GitHub APK on the phone and connect to the desktop head unit. For a real vehicle, install from a Google Play Internal App Sharing / Internal Testing link; Unknown sources does not grant Car App Library sideloaded apps trusted installation status.
 3. Select a destination on the phone, inspect whether car map shows that destination and a *preview* route.
 4. On car, open Search, verify recent/favorites and normal search; test location, 2D/3D, day/night and scaling.
 5. Only if you deployed HTTPS MCP: deliberately choose an AMAP Native query with no results, and verify the secondary results or explicit error.
