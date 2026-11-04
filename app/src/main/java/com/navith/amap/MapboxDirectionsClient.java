@@ -68,6 +68,11 @@ public final class MapboxDirectionsClient {
 
     public static void request(Context context, LatLng start, LatLng end,
                                boolean walking, Callback callback) {
+        request(context,start,end,walking?"walking":"driving-traffic",callback);
+    }
+
+    public static void request(Context context, LatLng start, LatLng end,
+                               String travelMode, Callback callback) {
         final String token=context.getString(R.string.mapbox_access_token).trim();
         if (!configured(context)) {
             MAIN.post(()->callback.failure("MAPBOX_PUBLIC_TOKEN is not configured"));
@@ -86,10 +91,20 @@ public final class MapboxDirectionsClient {
             try {
                 String coordinates=String.format(Locale.US,"%.6f,%.6f;%.6f,%.6f",
                     start.longitude,start.latitude,end.longitude,end.latitude);
-                String profile=walking?"walking":"driving-traffic";
+                String profile="walking".equals(travelMode)?"walking":
+                    "cycling".equals(travelMode)?"cycling":
+                    "driving".equals(travelMode)?"driving":"driving-traffic";
                 String url=BASE+profile+"/"+coordinates+"?steps=true&geometries=geojson"
-                    +"&overview=full&alternatives=true&language=th&voice_units=metric"
-                    +"&access_token="+URLEncoder.encode(token,"UTF-8");
+                    +"&overview=full&alternatives=true&language=th&voice_units=metric";
+                if(profile.startsWith("driving")) {
+                    android.content.SharedPreferences prefs=context.getSharedPreferences(
+                        "navith_view",Context.MODE_PRIVATE);
+                    List<String> exclude=new ArrayList<>();
+                    if(prefs.getBoolean("avoid_tolls",false))exclude.add("toll");
+                    if(prefs.getBoolean("avoid_highway",false))exclude.add("motorway");
+                    if(!exclude.isEmpty())url+="&exclude="+String.join(",",exclude);
+                }
+                url+="&access_token="+URLEncoder.encode(token,"UTF-8");
                 conn=(HttpURLConnection)new URL(url).openConnection();
                 conn.setRequestMethod("GET");
                 conn.setConnectTimeout(10000);
