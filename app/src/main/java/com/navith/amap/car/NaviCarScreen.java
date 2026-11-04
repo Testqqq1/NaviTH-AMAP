@@ -57,6 +57,8 @@ import com.navith.amap.NavigationMarkerFactory;
 import com.amap.api.maps.model.LatLng;
 import com.amap.api.maps.model.LatLngBounds;
 import com.amap.api.maps.model.Marker;
+import com.amap.api.maps.model.Circle;
+import com.amap.api.maps.model.CircleOptions;
 import com.amap.api.maps.model.MarkerOptions;
 import com.amap.api.maps.model.PolylineOptions;
 import com.amap.api.services.core.LatLonPoint;
@@ -88,7 +90,9 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
     private MapView mapView;
     private AMap map;
     private Marker carLocationMarker;
+    private Circle carAccuracyRing;
     private BitmapDescriptor carArrowIcon;
+    private float smoothCarHeading=Float.NaN;
     private RouteSearch routeSearch;
     private LocationManager locationManager;
     private final LocationListener locationListener = new LocationListener() {
@@ -371,10 +375,19 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         float heading=TripStore.heading(getCarContext());
         if(heading>=0f)carLocationMarker.setRotateAngle(
             NavigationMarkerFactory.angleForBearing(heading));
-        carLocationMarker.setAlpha(TripStore.hasRecentLocation(getCarContext())?1f:0.5f);
+        boolean fresh=TripStore.hasFreshNavigationLocation(getCarContext());
+        float accuracy=TripStore.accuracy(getCarContext());
+        carLocationMarker.setAlpha(fresh && (accuracy<0f||accuracy<=80f)?1f:0.55f);
+        if(accuracy>=10f && accuracy<300f && fresh) {
+            if(carAccuracyRing==null)carAccuracyRing=map.addCircle(
+                new CircleOptions().center(at).radius(accuracy)
+                    .fillColor(0x17087F77).strokeColor(0x66087F77)
+                    .strokeWidth(2f).zIndex(0.1f));
+            else {carAccuracyRing.setCenter(at);carAccuracyRing.setRadius(accuracy);}
+        }else if(carAccuracyRing!=null){carAccuracyRing.remove();carAccuracyRing=null;}
         // Follow only a fresh actual GPS fix; avoid repeated full-route redraws.
         // Pan/zoom temporarily disables follow until user taps the Locate action.
-        if (followGps && TripStore.hasRecentLocation(getCarContext())) {
+        if (followGps && fresh && (accuracy<0f || accuracy<=120f)) {
             long now=android.os.SystemClock.elapsedRealtime();
             if(now-lastCarCameraUpdate>900L) {
                 lastCarCameraUpdate=now;
@@ -383,8 +396,15 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
                 CameraPosition.Builder camera=new CameraPosition.Builder().target(at)
                         .zoom(inDrive?Math.max(17f,zoom):zoom)
                         .tilt(viewPrefs.getBoolean("view3d",true)?55f:0f);
-                if(inDrive && heading>=0f && viewPrefs.getBoolean("view3d",true))
-                    camera.bearing(heading);
+                if(inDrive && heading>=0f && viewPrefs.getBoolean("view3d",true)){
+                    if(!Float.isFinite(smoothCarHeading))smoothCarHeading=heading;
+                    else{
+                        float difference=((heading-smoothCarHeading+540f)%360f)-180f;
+                        smoothCarHeading=(smoothCarHeading+
+                            Math.max(-26f,Math.min(26f,difference*0.35f))+360f)%360f;
+                    }
+                    camera.bearing(smoothCarHeading);
+                }
                 else camera.bearing(map.getCameraPosition().bearing);
                 map.moveCamera(CameraUpdateFactory.newCameraPosition(camera.build()));
             }
@@ -395,6 +415,7 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         if (map==null) return;
         map.clear();
         carLocationMarker=null;
+        carAccuracyRing=null;
         LatLng from=TripStore.location(getCarContext());
         LatLng dest=TripStore.destination(getCarContext());
         List<LatLng> path=TripStore.route(getCarContext());
@@ -427,6 +448,7 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
     private void releasePresentation() {
         map=null;
         carLocationMarker=null;
+        carAccuracyRing=null;
         if(mapView!=null){try{mapView.onPause();mapView.onDestroy();}catch(Exception ignored){} mapView=null;}
         if(presentation!=null){try{presentation.dismiss();}catch(Exception ignored){}presentation=null;}
         if(virtualDisplay!=null){try{virtualDisplay.release();}catch(Exception ignored){}virtualDisplay=null;}
