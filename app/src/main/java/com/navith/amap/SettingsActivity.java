@@ -190,8 +190,8 @@ public final class SettingsActivity extends Activity {
                 toggle(tx("แสดงปุ่มซูม","Show zoom controls"),null,"zoom_controls",true);
                 toggle(tx("ล็อกการหมุนแผนที่ 2D","Lock rotation in 2D"),null,"lock_2d",false);
                 toggle(tx("เข้าโหมด 3 มิติเมื่อเริ่มนำทาง","3D camera in guidance"),null,"view3d",true);
-                toggle(tx("เครื่องหมายตำแหน่งใช้รูปโปรไฟล์","Use own image as location marker"),
-                    tx("เลือกภาพจริงในเมนูไอคอนตำแหน่ง","Choose an image in Position icon settings"),
+                toggle(tx("ใช้รูปของฉันเป็นไอคอนตำแหน่ง","Use my image as location marker"),
+                    tx("เลือกไฟล์รูปภาพจากโทรศัพท์","Select a photo from your device"),
                     "marker_custom_hint",false);
                 line(tx("ไอคอนตำแหน่ง","Position icon"),null,
                     NavigationMarkerFactory.label(this,prefs.getInt("vehicle_icon",6)),()->chooseMarker());
@@ -430,9 +430,9 @@ public final class SettingsActivity extends Activity {
         new AlertDialog.Builder(this)
             .setTitle(tx("สถานะระบบ NaviTH","NaviTH capabilities"))
             .setMessage(NavSdkBridge.isInstalled() ?
-                tx("APK นี้มี AMAP Navigation SDK รุ่นทดลอง แต่ต้องทดสอบสิทธิ์ API Key, เสียงและข้อมูลถนนในประเทศไทยก่อนใช้จริง\n\nAndroid Auto ยังอยู่ระหว่างทดสอบและไม่ใช่รุ่น Production",
+                tx("APK นี้มี AMAP Navigation SDK รุ่นทดลอง แต่ต้องทดสอบสิทธิ์ API Key, เสียงและข้อมูลถนนในประเทศไทยก่อนใช้จริง\n\nMapbox ยังเป็นโหมด Directions + GPS ทดลอง และ Android Auto ยังไม่ใช่รุ่น Production",
                    "This APK includes experimental AMAP Navigation. Verify API rights, voice and road coverage in your region. Android Auto is not production-ready.") :
-                tx("รุ่นนี้รองรับแผนที่ ค้นหา และดูเส้นทางเท่านั้น การนำทางเลี้ยวต่อเลี้ยวต้องใช้ APK Navigation Test แยกต่างหาก\n\nAndroid Auto ยังเป็นรุ่นทดลอง",
+                tx("รุ่นนี้รองรับแผนที่ ค้นหา และดูเส้นทาง AMAP หากใส่ Mapbox Token จะเปิดตัวอย่างเส้นทางและเสียง GPS แบบทดลองเฉพาะบนมือถือ ยังไม่ใช่ Navigation SDK เต็มรูปแบบ\n\nAndroid Auto ยังเป็น route preview",
                    "This build supports maps, search and route preview only. Turn-by-turn requires the separate Navigation Test APK. Android Auto remains experimental."))
             .setPositiveButton(tx("เข้าใจแล้ว","OK"),null).show();
     }
@@ -476,7 +476,23 @@ public final class SettingsActivity extends Activity {
         if(subtitle!=null)left.addView(label(subtitle,14,secondary,false));
         Switch sw=new Switch(this);sw.setButtonTintList(null);
         sw.setChecked(prefs.getBoolean(key,def));
-        sw.setOnCheckedChangeListener((b,c)->prefs.edit().putBoolean(key,c).apply());
+        sw.setOnCheckedChangeListener((b,c)->{
+            if("marker_custom_hint".equals(key)) {
+                if(c) {
+                    File image=new File(getFilesDir(),"navith_marker.png");
+                    if(image.exists()) {
+                        prefs.edit().putBoolean(key,true).putInt("vehicle_icon",
+                            NavigationMarkerFactory.OWN_IMAGE).apply();
+                    } else {
+                        sw.setChecked(false);
+                        Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                        pick.setType("image/*");
+                        pick.addCategory(Intent.CATEGORY_OPENABLE);
+                        startActivityForResult(pick,PICK_MARKER);
+                    }
+                } else prefs.edit().putBoolean(key,false).putInt("vehicle_icon",6).apply();
+            } else prefs.edit().putBoolean(key,c).apply();
+        });
         row.addView(sw);
         row.setOnClickListener(w->sw.setChecked(!sw.isChecked()));
         lastGroup.addView(row);divider();
@@ -665,7 +681,8 @@ public final class SettingsActivity extends Activity {
                     pick.setType("image/*");pick.addCategory(Intent.CATEGORY_OPENABLE);
                     startActivityForResult(pick,PICK_MARKER);
                 } else {
-                    prefs.edit().putInt("vehicle_icon",kind).apply();
+                    prefs.edit().putInt("vehicle_icon",kind)
+                        .putBoolean("marker_custom_hint",kind==NavigationMarkerFactory.OWN_IMAGE).apply();
                     build();
                 }
                 dialog.dismiss();
@@ -718,7 +735,8 @@ public final class SettingsActivity extends Activity {
             }
             if(bitmap!=small)bitmap.recycle();
             small.recycle();
-            prefs.edit().putInt("vehicle_icon",7).apply();
+            prefs.edit().putInt("vehicle_icon",7)
+                .putBoolean("marker_custom_hint",true).apply();
             Toast.makeText(this,tx("บันทึกรูปตำแหน่งแล้ว","Position image saved"),Toast.LENGTH_SHORT).show();
         }catch(Exception e){
             Toast.makeText(this,tx("เปิดรูปไม่สำเร็จ","Could not open image"),Toast.LENGTH_SHORT).show();
