@@ -1,0 +1,54 @@
+name: Verify AMAP Navigation SDK bundle
+
+on:
+  push:
+    paths:
+      - '.github/workflows/nav-sdk-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Download official AMAP Global Navigation SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://a.amap.com/lbs/static/opnavi_resources/AMap3DMap_AMapNavi_AMapSearch_AMapLocation.zip'
+          curl --fail --location --show-error --silent --retry 2 --retry-delay 3 --max-time 240 "$url" -o "$RUNNER_TEMP/amap-navigation.zip"
+          echo "Downloaded bytes: $(stat -c %s "$RUNNER_TEMP/amap-navigation.zip")"
+          file "$RUNNER_TEMP/amap-navigation.zip"
+          unzip -tq "$RUNNER_TEMP/amap-navigation.zip"
+          unzip -Z1 "$RUNNER_TEMP/amap-navigation.zip" | grep -Ei '\.(jar|aar|so)$' | head -80
+      - name: Inspect library classes and native platforms
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,zipfile,io
+          p=os.path.join(os.environ['RUNNER_TEMP'],'amap-navigation.zip')
+          with zipfile.ZipFile(p) as z:
+              entries=z.namelist()
+              jars=[n for n in entries if n.lower().endswith(('.jar','.aar'))]
+              print("Jar/AAR entries:", jars)
+              for n in jars:
+                  b=z.read(n)
+                  try:
+                      with zipfile.ZipFile(io.BytesIO(b)) as jar:
+                          classes=jar.namelist()
+                          found=[a for a in classes if a in (
+                              'com/amap/api/navi/AMapNavi.class',
+                              'com/amap/api/navi/AmapNaviPage.class',
+                              'com/amap/api/maps/MapView.class',
+                              'com/amap/api/services/poisearch/PoiSearch.class'
+                          )]
+                          print(n,'bytes',len(b),'found',found)
+                  except zipfile.BadZipFile: print(n,'not zipped class archive')
+              print("Native count:",sum(n.endswith('.so') for n in entries))
+              if not any(n.lower().endswith(('.jar','.aar')) for n in entries):
+                  raise SystemExit('No jar or aar in AMAP official bundle')
+          PY
