@@ -30,6 +30,11 @@
                 <category android:name="androidx.car.app.category.NAVIGATION" />
             </intent-filter>
         </service>
+        <!-- AMAP Navigation component only executes in the special Navigation build. -->
+        <activity android:name="com.amap.api.navi.AmapRouteActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.NoTitleBar"
+            android:configChanges="orientation|keyboardHidden|screenSize|navigation" />
         <activity android:name=".OfflineMapsActivity" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity
