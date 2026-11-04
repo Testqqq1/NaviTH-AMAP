@@ -36,4 +36,19 @@
     <string name="thai">ไทย</string>
     <string name="not_yet_available">ยังไม่รองรับในรุ่นนี้</string>
     <string name="address_lookup">ดูที่อยู่จากพิกัด</string>
+    <string name="voice_search">ค้นหาด้วยเสียง</string>
+    <string name="home_expand">ขยายสถานที่แนะนำ</string>
+    <string name="home_title">จะไปที่ไหนดี?</string>
+    <string name="home_label">บ้าน</string>
+    <string name="work_label">ที่ทำงาน</string>
+    <string name="home_recent">ล่าสุด</string>
+    <string name="home_set">บันทึกเป็นบ้าน</string>
+    <string name="work_set">บันทึกเป็นที่ทำงาน</string>
+    <string name="home_no_place">ยังไม่ได้ตั้งค่าสถานที่นี้ เลือกจุดหมายก่อนแล้วบันทึกได้ในรายละเอียดเส้นทาง</string>
+    <string name="search_network_error">ค้นหาไม่สำเร็จ ตรวจการเชื่อมต่อแล้วลองอีกครั้ง</string>
+    <string name="voice_not_available">ยังไม่มีบริการรับเสียงพูดในเครื่อง</string>
+    <string name="gps_accuracy">GPS ยังไม่แม่นยำ</string>
+    <string name="start_navigation_test">เริ่มนำทาง (ทดลอง)</string>
+    <string name="route_ready">เส้นทางพร้อมแล้ว</string>
+    <string name="settings_advanced">ขั้นสูงและนักพัฒนา</string>
 </resources>

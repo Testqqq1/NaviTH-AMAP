@@ -1,14 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="nav_primary">#0F766E</color>
-    <color name="nav_primary_dark">#115E59</color>
-    <color name="nav_text">#12313A</color>
-    <color name="nav_secondary">#5B6B73</color>
-    <color name="nav_surface">#EEF5F7</color>
-    <color name="nav_route">#087F73</color>
+    <color name="nav_primary">#087F77</color>
+    <color name="nav_primary_dark">#075F5B</color>
+    <color name="nav_text">#172B32</color>
+    <color name="nav_secondary">#4E656A</color>
+    <color name="nav_surface">#F7F9FA</color>
+    <color name="nav_route">#087F77</color>
     <color name="nav_error">#C2414A</color>
     <color name="nav_warning">#D97706</color>
     <color name="nav_card">#FFFFFF</color>
-    <color name="nav_border">#E2EBED</color>
-    <color name="nav_button">#0F766E</color>
+    <color name="nav_border">#B8CDD0</color>
+    <color name="nav_button">#087F77</color>
+    <color name="nav_soft_accent">#DDF3F0</color>
 </resources>

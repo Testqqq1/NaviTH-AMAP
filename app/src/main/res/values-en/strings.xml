@@ -36,4 +36,19 @@
     <string name="thai">ไทย</string>
     <string name="not_yet_available">Not available yet</string>
     <string name="address_lookup">Look up address at this point</string>
+    <string name="voice_search">Voice search</string>
+    <string name="home_expand">Expand suggested places</string>
+    <string name="home_title">Where to?</string>
+    <string name="home_label">Home</string>
+    <string name="work_label">Work</string>
+    <string name="home_recent">Recent</string>
+    <string name="home_set">Save as Home</string>
+    <string name="work_set">Save as Work</string>
+    <string name="home_no_place">This shortcut isn't set. Choose a destination, then save it from route details.</string>
+    <string name="search_network_error">Search failed. Check your connection and retry.</string>
+    <string name="voice_not_available">No voice recognition service is available</string>
+    <string name="gps_accuracy">Location accuracy is low</string>
+    <string name="start_navigation_test">Start navigation (test)</string>
+    <string name="route_ready">Route ready</string>
+    <string name="settings_advanced">Advanced and developer</string>
 </resources>
