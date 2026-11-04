@@ -6,6 +6,8 @@ import android.app.AlertDialog;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.os.SystemClock;
+import android.location.Location;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
@@ -68,7 +70,13 @@ public final class MainActivity extends Activity implements
     private MapView mapView;
     private AMap map;
     private AMapLocationClient locationClient;
+    private FastLocationProvider platformLocation;
     private LatLng myLocation;
+    private long lastLocationFixUptime = 0L;
+    private long lastSharedFixUptime = 0L;
+    private float lastLocationAccuracy = Float.MAX_VALUE;
+    private boolean followLocation = true;
+    private TextView speedText;
     private LatLng destination;
     private String destinationName = "";
     private Marker destinationMarker;
@@ -175,6 +183,7 @@ public final class MainActivity extends Activity implements
         statusText = findViewById(R.id.statusText);
         destinationText = findViewById(R.id.destinationText);
         routeSummary = findViewById(R.id.routeSummary);
+        speedText = findViewById(R.id.speedText);
         resultsPanel = findViewById(R.id.resultsPanel);
         resultsList = findViewById(R.id.resultsList);
         routePanel = findViewById(R.id.routePanel);
@@ -269,21 +278,80 @@ public final class MainActivity extends Activity implements
 
     private void locateOnce() {
         if (!initialized || !hasLocationPermission()) return;
+        if (platformLocation == null) {
+            platformLocation = new FastLocationProvider(this, new FastLocationProvider.Callback() {
+                @Override public void onFix(Location fix, String source) {
+                    runOnUiThread(() -> acceptLocation(fix, source));
+                }
+                @Override public void onMessage(String message) {
+                    runOnUiThread(() -> { if (myLocation == null) status(message); });
+                }
+            });
+        }
+        // Native GPS and network providers do not depend on AMAP's positioning server.
+        platformLocation.start();
+        if (myLocation == null) status("กำลังค้นหา GPS ของโทรศัพท์ • รับพิกัดได้แม้ AMAP Network ล้มเหลว");
         try {
             if (locationClient == null) {
                 locationClient = new AMapLocationClient(getApplicationContext());
                 AMapLocationClientOption options = new AMapLocationClientOption();
                 options.setLocationMode(AMapLocationClientOption.AMapLocationMode.Hight_Accuracy);
                 options.setOnceLocation(true);
-                options.setOnceLocationLatest(true);
+                options.setOnceLocationLatest(false);
+                options.setGpsFirst(true);
+                options.setGpsFirstTimeout(3000L);
                 options.setNeedAddress(false);
                 locationClient.setLocationOption(options);
                 locationClient.setLocationListener(this::onLocated);
             }
-            status("กำลังอ่านตำแหน่ง GPS…");
             locationClient.startLocation();
         } catch (Exception e) {
-            status("เปิด GPS ไม่สำเร็จ: " + e.getMessage());
+            if (myLocation == null) status("บริการ AMAP ไม่พร้อม • รอ GPS จาก Android");
+        }
+    }
+
+    private void acceptLocation(Location fix, String source) {
+        if (!initialized || isFinishing() || fix == null) return;
+        if (!Double.isFinite(fix.getLatitude()) || !Double.isFinite(fix.getLongitude())) return;
+        if (Math.abs(fix.getLatitude()) > 90 || Math.abs(fix.getLongitude()) > 180) return;
+        float accuracy = fix.hasAccuracy() ? fix.getAccuracy() : 150f;
+        if (accuracy > 250f) return;
+        long now = SystemClock.elapsedRealtime();
+        if (lastLocationFixUptime != 0 && now - lastLocationFixUptime < 12000L
+                && accuracy > lastLocationAccuracy * 2.0f) return;
+        boolean first = myLocation == null;
+        myLocation = new LatLng(fix.getLatitude(), fix.getLongitude());
+        lastLocationFixUptime = now;
+        lastLocationAccuracy = accuracy;
+        if (now - lastSharedFixUptime > 2500L || first) {
+            TripStore.setLocation(this, myLocation);
+            lastSharedFixUptime = now;
+        }
+        updatePositionMarker(fix);
+        if (followLocation && map != null) {
+            float zoom = first ? getViewPrefs().getFloat("zoom", 16f) : map.getCameraPosition().zoom;
+            if (first) map.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation, zoom));
+            else map.moveCamera(CameraUpdateFactory.newLatLng(myLocation));
+        }
+        if (speedText != null) {
+            float speedKmh = fix.hasSpeed() ? fix.getSpeed() * 3.6f : 0f;
+            boolean miles = getViewPrefs().getBoolean("mph", false);
+            speedText.setText("● " + source + " • ±" + Math.round(accuracy) + " ม.  |  "
+                    + Math.round(miles ? speedKmh / 1.609344f : speedKmh) + (miles ? " mph" : " km/h"));
+        }
+        if (first) status("พบพิกัดแล้วจาก " + source + " • ค้นหาปลายทางได้");
+    }
+
+    private void updatePositionMarker(Location fix) {
+        if (map == null || myLocation == null) return;
+        if (myMarker == null) {
+            myMarker = map.addMarker(new MarkerOptions().position(myLocation)
+                    .title("ตำแหน่งปัจจุบัน").icon(currentMarkerIcon()));
+        } else {
+            myMarker.setPosition(myLocation);
+        }
+        if (fix != null && fix.hasBearing() && fix.hasSpeed() && fix.getSpeed() > 2f) {
+            myMarker.setRotateAngle(360f - fix.getBearing());
         }
     }
 
@@ -291,24 +359,21 @@ public final class MainActivity extends Activity implements
         runOnUiThread(() -> {
             if (isFinishing() || !initialized) return;
             if (loc != null && loc.getErrorCode() == 0) {
-                myLocation = new LatLng(loc.getLatitude(), loc.getLongitude());
-                TripStore.setLocation(this, myLocation);
-                if (myMarker != null) myMarker.remove();
-                myMarker = map.addMarker(new MarkerOptions().position(myLocation)
-                        .title("ตำแหน่งปัจจุบัน")
-                        .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
-                map.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation, 15));
-                status("พบตำแหน่งแล้ว • เลือกจุดหมายแล้วแสดงเส้นทางได้");
-            } else {
-                status("ไม่พบ GPS" + (loc != null ? " (รหัส " + loc.getErrorCode() + ")" : "")
-                        + " • ตรวจสอบอินเทอร์เน็ตและการอนุญาตตำแหน่ง");
+                acceptLocation(loc, "AMAP");
+            } else if (myLocation == null) {
+                int code = loc == null ? -1 : loc.getErrorCode();
+                if (code == 4) status("AMAP ติดต่อเซิร์ฟเวอร์ตำแหน่งไม่ได้ (รหัส 4) • กำลังใช้ GPS ของโทรศัพท์แทน");
+                else if (code == 7) status("AMAP API Key/SHA1 ไม่ตรง (รหัส 7) • GPS ของ Android ยังใช้ได้");
+                else status("AMAP ตำแหน่งผิดพลาด (" + code + ") • รอ GPS ของโทรศัพท์");
             }
         });
     }
 
     private void recenter() {
+        followLocation = true;
         if (myLocation != null) {
-            map.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation, 16));
+            map.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation,
+                    Math.max(map.getCameraPosition().zoom, 16f)));
         } else {
             if (!hasLocationPermission()) {
                 locationRequested = false;
@@ -543,9 +608,11 @@ public final class MainActivity extends Activity implements
     @Override protected void onResume() {
         super.onResume();
         if (mapView != null) mapView.onResume();
+        if (initialized && hasLocationPermission()) locateOnce();
     }
 
     @Override protected void onPause() {
+        if (platformLocation != null) platformLocation.stop();
         if (locationClient != null) locationClient.stopLocation();
         if (mapView != null) mapView.onPause();
         super.onPause();
