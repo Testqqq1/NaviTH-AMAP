@@ -289,6 +289,11 @@ public final class MainActivity extends Activity implements
         findViewById(R.id.sheetGrabber).setOnClickListener(v -> toggleRouteExpanded());
         findViewById(R.id.routeOptionsButton).setOnClickListener(v -> chooseRouteOptions());
         findViewById(R.id.favoriteButton).setOnClickListener(v -> toggleFavorite());
+        View startNavigation=findViewById(R.id.startNavigationButton);
+        startNavigation.setVisibility(NavSdkBridge.isInstalled() ? View.VISIBLE : View.GONE);
+        startNavigation.setOnClickListener(v -> {
+            if(destination!=null)NavSdkBridge.openRoute(this,destination,destinationName);
+        });
         findViewById(R.id.addressLookupButton).setOnClickListener(v -> {
             if(destination!=null)reverseSelectedAddress(destination);
         });
