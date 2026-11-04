@@ -137,6 +137,13 @@ public final class MainActivity extends Activity implements
     private Circle accuracyRing;
     private final List<Marker> searchMapMarkers=new ArrayList<>();
     private final List<PoiItem> searchPoiResults=new ArrayList<>();
+    // Bounded per-session POI cache avoids unnecessary network round-trips.
+    private final java.util.LinkedHashMap<String,List<PoiItem>> poiCache=
+        new java.util.LinkedHashMap<String,List<PoiItem>>(20,0.75f,true) {
+            @Override protected boolean removeEldestEntry(Map.Entry<String,List<PoiItem>> eldest) {
+                return size()>20;
+            }
+        };
     private final List<DrivePath> driveAlternatives=new ArrayList<>();
     private final List<MapboxDirectionsClient.Route> mapboxAlternatives=new ArrayList<>();
     private MapboxDirectionsClient.Route selectedMapboxRoute;
@@ -361,7 +368,7 @@ public final class MainActivity extends Activity implements
                 if(query.length()<2) {renderSavedPlaces();return;}
                 searchResultsHeading.setText(getString(R.string.search_results));
                 pendingSearch=()->searchPlaces();
-                searchHandler.postDelayed(pendingSearch,420L);
+                searchHandler.postDelayed(pendingSearch,260L);
             }
             @Override public void afterTextChanged(Editable e) {}
         });
@@ -591,6 +598,8 @@ public final class MainActivity extends Activity implements
         myLocation = new LatLng(fix.getLatitude(), fix.getLongitude());
         lastLocationFixUptime = now;
         lastLocationAccuracy = accuracy;
+        if(first || now-lastSharedFixUptime>=2500L)
+            NavigationDiagnostics.gpsAccuracy(this,accuracy);
         if (now - lastSharedFixUptime > 2500L || first) {
             TripStore.setLocation(this, fix);
             lastSharedFixUptime = now;
@@ -720,6 +729,15 @@ public final class MainActivity extends Activity implements
             return;
         }
         searchResultsHeading.setText(getString(R.string.search_results));
+        List<PoiItem> cached=poiCache.get(term.toLowerCase(Locale.ROOT));
+        if(cached!=null) {
+            resultsList.removeAllViews();
+            searchPoiResults.clear();
+            searchPoiResults.addAll(cached);
+            for(PoiItem item:cached) addResultRow(item);
+            updateSearchMarkers();
+            return;
+        }
         resultsList.removeAllViews();
         TextView busy=new TextView(this);
         busy.setText(NaviLocale.text(this,"กำลังค้นหา…","Searching…"));
@@ -782,6 +800,9 @@ public final class MainActivity extends Activity implements
                 addResultRow(item);
                 if(++count==10)break;
             }
+            if(!searchPoiResults.isEmpty())
+                poiCache.put(term.toLowerCase(Locale.ROOT),
+                    new ArrayList<>(searchPoiResults));
             updateSearchMarkers();
         });
     }
@@ -2237,6 +2258,7 @@ public final class MainActivity extends Activity implements
             "Rerouting… · Experimental"));
         offRouteFixes=0;
         lastMapboxReroute=SystemClock.elapsedRealtime();
+        NavigationDiagnostics.reroute(this);
         final int generation=++mapboxRouteGeneration;
         final LatLng target=destination;
         routeSummary.setText(tr("ออกนอกเส้นทาง · Mapbox กำลังคำนวณใหม่…",
