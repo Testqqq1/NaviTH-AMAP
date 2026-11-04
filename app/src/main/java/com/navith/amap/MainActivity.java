@@ -1466,8 +1466,9 @@ public final class MainActivity extends Activity implements
             Configuration.ORIENTATION_LANDSCAPE;
         View secondRow=findViewById(R.id.homeSecondaryModes);
         View shortcutRow=findViewById(R.id.homeShortcutRow);
-        if(secondRow!=null)secondRow.setVisibility(landscape?View.GONE:View.VISIBLE);
-        if(shortcutRow!=null)shortcutRow.setVisibility(landscape?View.GONE:View.VISIBLE);
+        // Compact home by default. Expand only when explicitly requested.
+        if(secondRow!=null)secondRow.setVisibility(!landscape && homeOpen?View.VISIBLE:View.GONE);
+        if(shortcutRow!=null)shortcutRow.setVisibility(!landscape && homeOpen?View.VISIBLE:View.GONE);
         if(landscape && homeExpanded!=null && homeExpanded.getVisibility()==View.VISIBLE) {
             homeExpanded.setVisibility(View.GONE);
             homeOpen=false;
@@ -1753,6 +1754,7 @@ public final class MainActivity extends Activity implements
         AutoTransition transition=new AutoTransition();transition.setDuration(180);
         TransitionManager.beginDelayedTransition(homePanel,transition);
         homeExpanded.setVisibility(homeOpen?View.VISIBLE:View.GONE);
+        applyHomeChrome();
         if(homeOpen)renderHomeRecent();
     }
     private void renderHomeRecent() {
@@ -2041,7 +2043,7 @@ public final class MainActivity extends Activity implements
         }
         statusText.setText(text);
         statusText.setTranslationY(homePanel!=null &&
-            homePanel.getVisibility()==View.VISIBLE ? -dp(homeOpen?520:330):0);
+            homePanel.getVisibility()==View.VISIBLE ? -dp(homeOpen?470:270):0);
         statusText.setVisibility(View.VISIBLE);
         dismissStatus=()->statusText.setVisibility(View.GONE);
         uiHandler.postDelayed(dismissStatus,3200L);
