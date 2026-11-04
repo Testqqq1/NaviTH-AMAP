@@ -28,6 +28,9 @@ import android.widget.FrameLayout;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import android.content.Intent;
+import android.speech.RecognizerIntent;
+import android.content.ActivityNotFoundException;
+import com.navith.amap.car.NaviGuidanceStore;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -106,6 +109,7 @@ public final class MainActivity extends Activity implements
         PoiSearch.OnPoiSearchListener, RouteSearch.OnRouteSearchListener {
 
     private static final int REQ_LOCATION = 101;
+    private static final int REQ_VOICE_SEARCH = 103;
     private static final LatLng DEFAULT_CENTER = new LatLng(13.7563, 100.5018); // Bangkok, not the user's location.
     private static final String CONSENT_PREFS = "consent";
 
@@ -152,6 +156,11 @@ public final class MainActivity extends Activity implements
     private LinearLayout resultsPanel;
     private LinearLayout resultsList;
     private LinearLayout routePanel;
+    private LinearLayout homePanel,homeRecentList,homeExpanded;
+    private boolean homeOpen=false;
+    private boolean hasRoutePreview=false;
+    private final Handler uiHandler=new Handler(Looper.getMainLooper());
+    private Runnable dismissStatus;
     private RadioGroup modeGroup;
     private final SharedPreferences.OnSharedPreferenceChangeListener tripChanges = (p,key) -> {
         if (!TripStore.DESTINATION.equals(key) || !initialized) return;
@@ -253,9 +262,20 @@ public final class MainActivity extends Activity implements
         resultsPanel = findViewById(R.id.resultsPanel);
         resultsList = findViewById(R.id.resultsList);
         routePanel = findViewById(R.id.routePanel);
+        homePanel = findViewById(R.id.homePanel);
+        homeRecentList = findViewById(R.id.homeRecentList);
+        homeExpanded = findViewById(R.id.homeExpanded);
         modeGroup = findViewById(R.id.modeGroup);
+        renderHomeRecent();
 
         findViewById(R.id.searchBarButton).setOnClickListener(v -> openSearch());
+        findViewById(R.id.voiceSearchButton).setOnClickListener(v -> voiceSearch());
+        findViewById(R.id.homeGrabber).setOnClickListener(v -> toggleHomeExpanded());
+        findViewById(R.id.recentShortcut).setOnClickListener(v -> {
+            if(!homeOpen)toggleHomeExpanded();else openSearch();
+        });
+        findViewById(R.id.homeShortcut).setOnClickListener(v -> openSavedShortcut("home"));
+        findViewById(R.id.workShortcut).setOnClickListener(v -> openSavedShortcut("work"));
         findViewById(R.id.searchBack).setOnClickListener(v -> closeSearch());
         findViewById(R.id.searchClear).setOnClickListener(v -> searchInput.setText(""));
         searchInput.setOnEditorActionListener((v, id, event) -> {
@@ -289,8 +309,10 @@ public final class MainActivity extends Activity implements
         findViewById(R.id.sheetGrabber).setOnClickListener(v -> toggleRouteExpanded());
         findViewById(R.id.routeOptionsButton).setOnClickListener(v -> chooseRouteOptions());
         findViewById(R.id.favoriteButton).setOnClickListener(v -> toggleFavorite());
+        findViewById(R.id.saveHomeButton).setOnClickListener(v -> saveShortcut("home"));
+        findViewById(R.id.saveWorkButton).setOnClickListener(v -> saveShortcut("work"));
         View startNavigation=findViewById(R.id.startNavigationButton);
-        startNavigation.setVisibility(NavSdkBridge.isInstalled() ? View.VISIBLE : View.GONE);
+        startNavigation.setVisibility(View.GONE); // Only after a real route preview has been computed.
         startNavigation.setOnClickListener(v -> {
             if(destination!=null)NavSdkBridge.openRoute(this,destination,destinationName);
         });
@@ -453,7 +475,7 @@ public final class MainActivity extends Activity implements
         lastLocationFixUptime = now;
         lastLocationAccuracy = accuracy;
         if (now - lastSharedFixUptime > 2500L || first) {
-            TripStore.setLocation(this, myLocation);
+            TripStore.setLocation(this, fix);
             lastSharedFixUptime = now;
         }
         updatePositionMarker(fix);
@@ -463,14 +485,21 @@ public final class MainActivity extends Activity implements
             else map.moveCamera(CameraUpdateFactory.newLatLng(myLocation));
         }
         if (gpsStatus != null) {
-            float speedKmh = fix.hasSpeed() ? fix.getSpeed() * 3.6f : 0f;
-            boolean miles = getViewPrefs().getBoolean("mph", false);
-            String units=miles ? " mph" : " km/h";
-            String prefix=accuracy>80f?"⚠ ":"◎ ";
-            gpsStatus.setText(prefix+"±"+Math.round(accuracy)+ (NaviLocale.thai(this)?" ม.":" m")+"  ·  "
-                    + Math.round(miles ? speedKmh / 1.609344f : speedKmh) + units);
-            gpsStatus.setContentDescription(getString(R.string.my_position) + " ±"
-                    + Math.round(accuracy) + (NaviLocale.thai(this) ? " เมตร" : " meters"));
+            boolean navigating=NaviGuidanceStore.fresh(this)!=null;
+            if(accuracy>65f || navigating) {
+                String label=(accuracy>65f?"⚠ ":"◎ ")+"±"+Math.round(accuracy)
+                    +(NaviLocale.thai(this)?" ม.":" m");
+                if(navigating && fix.hasSpeed()) {
+                    boolean miles=getViewPrefs().getBoolean("mph",false);
+                    float speed=fix.getSpeed()*3.6f;
+                    label+="  ·  "+Math.round(miles?speed/1.609344f:speed)
+                        +(miles?" mph":" km/h");
+                }
+                gpsStatus.setText(label);
+                gpsStatus.setVisibility(View.VISIBLE);
+            } else gpsStatus.setVisibility(View.GONE);
+            gpsStatus.setContentDescription(getString(R.string.my_position)+" ±"+
+                Math.round(accuracy)+(NaviLocale.thai(this)?" เมตร":" meters"));
         }
         if (first) status(tr("พบพิกัดจาก ","Location from ")+source);
     }
@@ -812,7 +841,13 @@ public final class MainActivity extends Activity implements
         destinationMarker.showInfoWindow();
         destinationText.setText(label);
         routeSummary.setText(tr("เลือกจุดหมายแล้ว • ดูเส้นทาง","Destination selected · View route"));
+        hasRoutePreview=false;
+        findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
+        Button routeAction=findViewById(R.id.routeButton);
+        routeAction.setBackgroundResource(R.drawable.nav_bg_button);
+        routeAction.setTextColor(Color.WHITE);
         routePanel.setVisibility(View.VISIBLE);
+        homePanel.setVisibility(View.GONE);
         routeExpanded.setVisibility(View.GONE);
         routeOpen=false;
         statusText.setVisibility(View.GONE);
@@ -839,6 +874,8 @@ public final class MainActivity extends Activity implements
         clearRouteLine();
         TripStore.clearRoute(this);
         routeSummary.setText(tr("กำลังคำนวณเส้นทาง…","Calculating route…"));
+        hasRoutePreview=false;
+        findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
         try {
             RouteSearch.FromAndTo fromAndTo = new RouteSearch.FromAndTo(
                     toPoint(myLocation), toPoint(destination));
@@ -955,11 +992,20 @@ public final class MainActivity extends Activity implements
             +NaviLocale.text(this," • ตัวอย่างเส้นทาง ยังไม่มีเสียงนำทาง"," • Route preview, no turn-by-turn guidance"));
         routeSummary.setText(mode + "  •  " + km + "  •  " + time);
         ((Button)findViewById(R.id.routeButton)).setText(R.string.change_route);
+        hasRoutePreview=true;
+        boolean canStart=NavSdkBridge.isInstalled() &&
+            modeGroup.getCheckedRadioButtonId()!=R.id.modeWalk;
+        findViewById(R.id.startNavigationButton).setVisibility(canStart?View.VISIBLE:View.GONE);
+        Button routeAction=findViewById(R.id.routeButton);
+        routeAction.setBackgroundResource(canStart?R.drawable.nav_bg_subtle:R.drawable.nav_bg_button);
+        routeAction.setTextColor(canStart?getColor(R.color.nav_primary):Color.WHITE);
         TripStore.setRoute(this, points, distanceMeters, seconds, mode);
         status(tr("ดูเส้นทางไป ","Route preview to ")+destinationName);
     }
 
     private void routeFailed(int code) {
+        hasRoutePreview=false;
+        findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
         routeSummary.setText(tr("ไม่พบเส้นทาง (","No route (")+code+tr(") • ตรวจสอบพื้นที่บริการ",") · Check coverage"));
         status(tr("อาจไม่มีข้อมูลเส้นทางในพื้นที่นี้","Route data may be unavailable here"));
     }
@@ -989,6 +1035,10 @@ public final class MainActivity extends Activity implements
             destinationMarker = null;
         }
         routePanel.setVisibility(View.GONE);
+        homePanel.setVisibility(View.VISIBLE);
+        renderHomeRecent();
+        hasRoutePreview=false;
+        findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
         driveAlternatives.clear();
         LinearLayout alt=findViewById(R.id.routeAlternatives);
         if(alt!=null)alt.removeAllViews();
@@ -1166,6 +1216,18 @@ public final class MainActivity extends Activity implements
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if(request==REQ_VOICE_SEARCH){
+            if(result==RESULT_OK && data!=null){
+                ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+                if(words!=null && !words.isEmpty() && words.get(0)!=null){
+                    openSearch();
+                    searchInput.setText(words.get(0));
+                    searchInput.setSelection(searchInput.length());
+                    searchPlaces();
+                }
+            }
+            return;
+        }
         if (request != PICK_MARKER_IMAGE || result != RESULT_OK || data == null || data.getData() == null) return;
         try {
             android.net.Uri uri = data.getData();
@@ -1292,6 +1354,82 @@ public final class MainActivity extends Activity implements
         }catch(Exception e){clearSearchMarkers();}
     }
 
+    private void toggleHomeExpanded() {
+        if(homePanel==null || destination!=null)return;
+        homeOpen=!homeOpen;
+        AutoTransition transition=new AutoTransition();transition.setDuration(180);
+        TransitionManager.beginDelayedTransition(homePanel,transition);
+        homeExpanded.setVisibility(homeOpen?View.VISIBLE:View.GONE);
+        if(homeOpen)renderHomeRecent();
+    }
+    private void renderHomeRecent() {
+        if(homeRecentList==null)return;
+        homeRecentList.removeAllViews();
+        JSONArray records=saved("recents");
+        int count=0;
+        for(int i=0;i<records.length()&&count<3;i++){
+            JSONObject item=records.optJSONObject(i);
+            if(item==null)continue;
+            double lat=item.optDouble("lat",Double.NaN),lon=item.optDouble("lon",Double.NaN);
+            if(!Double.isFinite(lat)||!Double.isFinite(lon) ||
+               Math.abs(lat)>90||Math.abs(lon)>180)continue;
+            String name=item.optString("title","");
+            if(name.isEmpty())continue;
+            LatLng point=new LatLng(lat,lon);
+            TextView row=new TextView(this);
+            row.setText("⌖  "+name);row.setTextSize(16);
+            row.setSingleLine(true);row.setEllipsize(TextUtils.TruncateAt.END);
+            row.setTextColor(getColor(R.color.nav_text));row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setMinHeight(dp(52));
+            row.setOnClickListener(v->chooseDestination(point,name));
+            homeRecentList.addView(row);count++;
+        }
+        if(count==0){
+            TextView empty=new TextView(this);
+            empty.setText(tr("ยังไม่มีสถานที่ล่าสุด","No recent places yet"));
+            empty.setTextSize(14);empty.setTextColor(getColor(R.color.nav_secondary));
+            empty.setPadding(0,dp(8),0,dp(8));homeRecentList.addView(empty);
+        }
+    }
+    private void openSavedShortcut(String key) {
+        String raw=getSharedPreferences("navith_places",MODE_PRIVATE).getString(key,"");
+        try {
+            JSONObject item=new JSONObject(raw);
+            double lat=item.getDouble("lat"),lon=item.getDouble("lon");
+            if(Math.abs(lat)>90 || Math.abs(lon)>180)throw new Exception("Coordinates");
+            chooseDestination(new LatLng(lat,lon),item.optString("title",key));
+        }catch(Exception e){
+            Toast.makeText(this,R.string.home_no_place,Toast.LENGTH_LONG).show();
+            openSearch();
+        }
+    }
+    private void saveShortcut(String key) {
+        if(destination==null)return;
+        getSharedPreferences("navith_places",MODE_PRIVATE).edit()
+            .putString(key,recordPlace(destination,destinationName).toString()).apply();
+        Toast.makeText(this,"home".equals(key)?R.string.home_set:R.string.work_set,
+            Toast.LENGTH_SHORT).show();
+    }
+    private void voiceSearch() {
+        new AlertDialog.Builder(this).setTitle(R.string.voice_search)
+            .setMessage(tr("จะเปิดบริการรู้จำเสียงในโทรศัพท์ ซึ่งอาจประมวลผลเสียงผ่านอินเทอร์เน็ต",
+                "Your installed voice recognition provider may process speech online."))
+            .setNegativeButton(tr("ยกเลิก","Cancel"),null)
+            .setPositiveButton(tr("ดำเนินการต่อ","Continue"),(d,w)->{
+                Intent voice=new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                voice.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+                voice.putExtra(RecognizerIntent.EXTRA_LANGUAGE,
+                    NaviLocale.thai(this)?"th-TH":"en-US");
+                voice.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,1);
+                try{startActivityForResult(voice,REQ_VOICE_SEARCH);}
+                catch(ActivityNotFoundException missing){
+                    Toast.makeText(this,R.string.voice_not_available,Toast.LENGTH_LONG).show();
+                    openSearch();
+                }
+            }).show();
+    }
+
     private void toggleRouteExpanded() {
         routeOpen=!routeOpen;
         AutoTransition transition=new AutoTransition();
@@ -1304,6 +1442,7 @@ public final class MainActivity extends Activity implements
     private void openSearch() {
         searchOverlay.setAlpha(0f);
         searchOverlay.setVisibility(View.VISIBLE);
+        homePanel.setVisibility(View.GONE);
         searchOverlay.animate().alpha(1f).setDuration(150).start();
         searchInput.setText("");
         renderSavedPlaces();
@@ -1318,6 +1457,7 @@ public final class MainActivity extends Activity implements
     private void closeSearch() {
         if(searchOverlay==null)return;
         searchOverlay.setVisibility(View.GONE);
+        if(destination==null)homePanel.setVisibility(View.VISIBLE);
         if(pendingSearch!=null)searchHandler.removeCallbacks(pendingSearch);
         hideKeyboard();
         if(destination==null)updateSearchMarkers();
@@ -1415,8 +1555,13 @@ public final class MainActivity extends Activity implements
         if(myMarker!=null)myMarker.setVisible(visible);
         if(accuracyRing!=null)accuracyRing.setVisible(visible);
         if(gpsStatus!=null) {
-            if(!hasLocationPermission())gpsStatus.setText(R.string.gps_permission);
-            else if(myLocation==null)gpsStatus.setText(R.string.gps_searching);
+            if(!hasLocationPermission()) {
+                gpsStatus.setText(R.string.gps_permission);
+                gpsStatus.setVisibility(View.VISIBLE);
+            }else if(myLocation==null){
+                gpsStatus.setText(R.string.gps_searching);
+                gpsStatus.setVisibility(View.VISIBLE);
+            }
         }
     }
     private void addLayerSwitch(LinearLayout container,String label,String key,boolean defaultValue) {
@@ -1493,8 +1638,18 @@ public final class MainActivity extends Activity implements
     }
 
     private void status(String text) {
-        if (statusText != null) statusText.setText(text);
-        else Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
+        if(statusText==null || !initialized) {
+            Toast.makeText(this,text,Toast.LENGTH_SHORT).show();return;
+        }
+        if(dismissStatus!=null)uiHandler.removeCallbacks(dismissStatus);
+        if(destination!=null) {
+            Toast.makeText(this,text,Toast.LENGTH_SHORT).show();
+            statusText.setVisibility(View.GONE);return;
+        }
+        statusText.setText(text);
+        statusText.setVisibility(View.VISIBLE);
+        dismissStatus=()->statusText.setVisibility(View.GONE);
+        uiHandler.postDelayed(dismissStatus,3200L);
     }
 
     private int dp(float n) { return Math.round(n * getResources().getDisplayMetrics().density); }
@@ -1518,6 +1673,7 @@ public final class MainActivity extends Activity implements
         if (platformLocation != null) platformLocation.stop();
         if (locationClient != null) locationClient.stopLocation();
         if (pendingSearch != null) searchHandler.removeCallbacks(pendingSearch);
+        if (dismissStatus != null) uiHandler.removeCallbacks(dismissStatus);
         if (mapView != null) mapView.onPause();
         super.onPause();
     }
