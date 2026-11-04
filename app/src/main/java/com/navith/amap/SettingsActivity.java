@@ -121,6 +121,12 @@ public final class SettingsActivity extends Activity {
         groupStart();
         line(tx("ภาษาแอป","App language"),tx("ชื่อสถานที่ขึ้นกับข้อมูลแผนที่","Map labels depend on provider"),
             NaviLocale.thai(this)?"ไทย":"English",()->chooseLanguage());
+        section(tx("แผนที่ออฟไลน์","Offline maps"));
+        groupStart();
+        line(tx("เมืองที่ดาวน์โหลดได้","Available city maps"),
+            tx("ดูข้อมูลที่ AMAP อนุญาตให้บัญชีนี้ใช้งาน ไม่รวมการนำทางออฟไลน์",
+                "Provider/account availability; offline routing is NOT included"),
+            "›",()->startActivity(new Intent(this,OfflineMapsActivity.class)));
         section(tx("ขั้นสูง","Advanced"));
         groupStart();
         line(tx("โมเดลตำแหน่ง","Position marker"),
