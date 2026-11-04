@@ -29,6 +29,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import android.content.Intent;
 import android.speech.RecognizerIntent;
+import android.speech.tts.TextToSpeech;
 import android.content.ActivityNotFoundException;
 import com.navith.amap.car.NaviGuidanceStore;
 import android.content.res.Configuration;
@@ -136,6 +137,16 @@ public final class MainActivity extends Activity implements
     private final List<Marker> searchMapMarkers=new ArrayList<>();
     private final List<PoiItem> searchPoiResults=new ArrayList<>();
     private final List<DrivePath> driveAlternatives=new ArrayList<>();
+    private final List<MapboxDirectionsClient.Route> mapboxAlternatives=new ArrayList<>();
+    private MapboxDirectionsClient.Route selectedMapboxRoute;
+    private int mapboxRouteGeneration=0;
+    private boolean mapboxGuiding=false;
+    private int mapboxNextStep=1;
+    private int lastSpokenStep=-1;
+    private int offRouteFixes=0;
+    private boolean reroutingMapbox=false;
+    private long lastMapboxReroute=0L;
+    private TextToSpeech mapboxVoice;
     private Polyline routeLine;
     private static final int PICK_MARKER_IMAGE = 3001;
     private boolean initialized = false;
@@ -339,9 +350,19 @@ public final class MainActivity extends Activity implements
         startNavigation.setVisibility(View.GONE); // Only after a real route preview has been computed.
         startNavigation.setOnClickListener(v -> {
             if("planning".equals(NaviGuidanceStore.phase(this)))return;
-            if(NaviGuidanceStore.isNavigating(this)) {
+            if(mapboxGuiding) {
+                stopMapboxGuidance();
+                refreshNavigationAction();
+            } else if(NaviGuidanceStore.isNavigating(this)) {
                 NavSdkBridge.stopNavigation(this);
                 refreshNavigationAction();
+            } else if(hasRoutePreview && destination!=null &&
+                selectedMapboxRoute!=null && MapboxDirectionsClient.configured(this)) {
+                if(!hasFreshAccurateFix()) {
+                    status(tr("GPS ยังไม่พร้อม","GPS is not ready"));
+                    locateOnce();return;
+                }
+                startMapboxGuidance();
             } else if(hasRoutePreview && destination!=null && NavSdkBridge.isInstalled()) {
                 if(!hasFreshAccurateFix()) {
                     status(tr("GPS ยังไม่พร้อม โปรดรอตำแหน่งที่แม่นยำก่อนนำทาง",
@@ -357,6 +378,10 @@ public final class MainActivity extends Activity implements
             if(destination!=null)reverseSelectedAddress(destination);
         });
         modeGroup.setOnCheckedChangeListener((g,id) -> {
+            stopMapboxGuidance();
+            mapboxRouteGeneration++;
+            mapboxAlternatives.clear();
+            selectedMapboxRoute=null;
             clearRouteLine();
             driveAlternatives.clear();
             LinearLayout alt=findViewById(R.id.routeAlternatives);
@@ -529,7 +554,7 @@ public final class MainActivity extends Activity implements
         }
         updatePositionMarker(fix);
         if (followLocation && map != null) {
-            boolean navigating=NaviGuidanceStore.isNavigating(this);
+            boolean navigating=NaviGuidanceStore.isNavigating(this) || mapboxGuiding;
             float zoom=first?getViewPrefs().getFloat("zoom",16f):map.getCameraPosition().zoom;
             if(first) {
                 map.animateCamera(CameraUpdateFactory.newLatLngZoom(myLocation,zoom));
@@ -558,7 +583,7 @@ public final class MainActivity extends Activity implements
             }
         }
         if (gpsStatus != null) {
-            boolean navigating=NaviGuidanceStore.isNavigating(this);
+            boolean navigating=NaviGuidanceStore.isNavigating(this) || mapboxGuiding;
             if(accuracy>65f || navigating) {
                 String label=(accuracy>65f?"⚠ ":"◎ ")+"±"+Math.round(accuracy)
                     +(NaviLocale.thai(this)?" ม.":" m");
@@ -574,6 +599,7 @@ public final class MainActivity extends Activity implements
             gpsStatus.setContentDescription(getString(R.string.my_position)+" ±"+
                 Math.round(accuracy)+(NaviLocale.thai(this)?" เมตร":" meters"));
         }
+        if (mapboxGuiding && accuracy<=70f) updateMapboxGuidance(fix);
         if (first) status(tr("พบพิกัดจาก ","Location from ")+source);
     }
 
@@ -922,6 +948,10 @@ public final class MainActivity extends Activity implements
             addressLine.setVisibility(View.GONE);
             addressLine.setText("");
         }
+        stopMapboxGuidance();
+        mapboxRouteGeneration++;
+        mapboxAlternatives.clear();
+        selectedMapboxRoute=null;
         driveAlternatives.clear();
         LinearLayout alternativeRows=findViewById(R.id.routeAlternatives);
         if(alternativeRows!=null)alternativeRows.removeAllViews();
@@ -971,7 +1001,20 @@ public final class MainActivity extends Activity implements
             else { locationRequested = false; askForLocation(); }
             return;
         }
-        if (routeSearch == null) {
+        if (MapboxDirectionsClient.configured(this) && !MapboxDirectionsClient.consented(this)) {
+            new AlertDialog.Builder(this)
+                .setTitle(tr("อนุญาต Mapbox Directions","Allow Mapbox Directions"))
+                .setMessage(tr("NaviTH จะส่งพิกัดจุดเริ่มต้นและจุดหมายไปยัง Mapbox เพิ่มจาก AMAP เดิม เพื่อคำนวณเส้นทางในประเทศไทย ข้อมูลอยู่ภายใต้นโยบาย Mapbox ที่ mapbox.com/legal/privacy และบริการอาจมีค่าใช้จ่าย",
+                    "NaviTH will share your start and destination coordinates with Mapbox in addition to AMAP to calculate routes in Thailand. See mapbox.com/legal/privacy. Mapbox usage may incur charges."))
+                .setPositiveButton(tr("ยินยอม","Agree"),(d,w)->{
+                    getSharedPreferences("mapbox_consent",MODE_PRIVATE)
+                        .edit().putBoolean("accepted",true).apply();
+                    calculateRoute();
+                })
+                .setNegativeButton(tr("ยกเลิก","Cancel"),null).show();
+            return;
+        }
+        if (!MapboxDirectionsClient.configured(this) && routeSearch == null) {
             status(tr("บริการคำนวณเส้นทางยังไม่พร้อม","Route service unavailable"));
             return;
         }
@@ -980,6 +1023,29 @@ public final class MainActivity extends Activity implements
         routeSummary.setText(tr("กำลังคำนวณเส้นทาง…","Calculating route…"));
         hasRoutePreview=false;
         findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
+        if(MapboxDirectionsClient.configured(this)) {
+            final int generation=++mapboxRouteGeneration;
+            final LatLng target=destination;
+            final boolean walk=modeGroup.getCheckedRadioButtonId()==R.id.modeWalk;
+            mapboxAlternatives.clear();
+            selectedMapboxRoute=null;
+            MapboxDirectionsClient.request(this,myLocation,target,walk,
+                new MapboxDirectionsClient.Callback() {
+                    @Override public void success(List<MapboxDirectionsClient.Route> routes) {
+                        if(isFinishing() || destination==null || !destination.equals(target)
+                            || mapboxRouteGeneration!=generation)return;
+                        showMapboxRoutes(routes,walk);
+                    }
+                    @Override public void failure(String message) {
+                        if(isFinishing() || mapboxRouteGeneration!=generation)return;
+                        routeSummary.setText(tr("Mapbox คำนวณเส้นทางไม่สำเร็จ: ",
+                            "Mapbox routing failed: ")+message);
+                        status(tr("ตรวจสอบอินเทอร์เน็ต โทเค็น และพื้นที่บริการ",
+                            "Check network, token and coverage"));
+                    }
+                });
+            return;
+        }
         try {
             RouteSearch.FromAndTo fromAndTo = new RouteSearch.FromAndTo(
                     toPoint(myLocation), toPoint(destination));
@@ -1027,6 +1093,40 @@ public final class MainActivity extends Activity implements
     @Override public void onBusRouteSearched(BusRouteResult result, int code) { }
     @Override public void onRideRouteSearched(RideRouteResult result, int code) { }
 
+
+    
+    private void showMapboxRoutes(List<MapboxDirectionsClient.Route> routes, boolean walking) {
+        mapboxAlternatives.clear();
+        mapboxAlternatives.addAll(routes);
+        LinearLayout container=findViewById(R.id.routeAlternatives);
+        if(container==null)return;
+        container.removeAllViews();
+        for(int i=0;i<mapboxAlternatives.size();i++) {
+            final int selected=i;
+            MapboxDirectionsClient.Route candidate=mapboxAlternatives.get(i);
+            TextView row=new TextView(this);
+            row.setText("Mapbox · "+(i+1)+"  ·  "+
+                String.format(Locale.US,"%.1f km",candidate.meters/1000f)+"  ·  "+
+                Math.max(1,Math.round(candidate.seconds/60f))+tr(" นาที"," min"));
+            row.setTextColor(getColor(R.color.nav_primary));
+            row.setTextSize(14);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setMinHeight(dp(48));
+            row.setPadding(dp(12),dp(6),dp(12),dp(6));
+            row.setOnClickListener(v->displayMapboxRoute(selected,walking));
+            container.addView(row);
+        }
+        displayMapboxRoute(0,walking);
+    }
+
+    private void displayMapboxRoute(int index,boolean walking) {
+        if(index<0||index>=mapboxAlternatives.size())return;
+        selectedMapboxRoute=mapboxAlternatives.get(index);
+        drawRoute(selectedMapboxRoute.geometry,selectedMapboxRoute.meters,
+            selectedMapboxRoute.seconds,walking?tr("เดินเท้า · Mapbox","Walking · Mapbox"):
+                tr("รถยนต์ · Mapbox","Driving · Mapbox"));
+        routeSummary.setText(routeSummary.getText()+" · Powered by Mapbox");
+    }
 
     private void showDriveRoutes(List<DrivePath> paths) {
         driveAlternatives.clear();
@@ -1097,7 +1197,8 @@ public final class MainActivity extends Activity implements
         routeSummary.setText(mode + "  •  " + km + "  •  " + time);
         ((Button)findViewById(R.id.routeButton)).setText(R.string.change_route);
         hasRoutePreview=true;
-        boolean canStart=NavSdkBridge.isInstalled() &&
+        boolean canStart=(NavSdkBridge.isInstalled() ||
+            (selectedMapboxRoute!=null && MapboxDirectionsClient.configured(this))) &&
             modeGroup.getCheckedRadioButtonId()!=R.id.modeWalk;
         findViewById(R.id.startNavigationButton).setVisibility(canStart?View.VISIBLE:View.GONE);
         Button routeAction=findViewById(R.id.routeButton);
@@ -1128,6 +1229,10 @@ public final class MainActivity extends Activity implements
     }
 
     private void clearDestination() {
+        stopMapboxGuidance();
+        mapboxRouteGeneration++;
+        mapboxAlternatives.clear();
+        selectedMapboxRoute=null;
         clearRouteLine();
         destination = null;
         destinationName = "";
@@ -1784,9 +1889,154 @@ public final class MainActivity extends Activity implements
         if (initialized && hasLocationPermission()) locateOnce();
     }
 
+
+    /**
+     * Experimental foreground guidance from Mapbox Directions steps, NOT Mapbox
+     * Navigation SDK (no map matching/lane assistance/background service).
+     * Safe for static/simulated tests only until fully validated on the road.
+     */
+    private void startMapboxGuidance() {
+        if(selectedMapboxRoute==null || selectedMapboxRoute.steps.size()<2)return;
+        new AlertDialog.Builder(this)
+            .setTitle(tr("นำทาง Mapbox (ทดสอบ)","Mapbox guidance (experimental)"))
+            .setMessage(tr(
+                "ระบบนี้ใช้ GPS และคำสั่งเลี้ยวจาก Mapbox Directions ยังไม่มี Map Matching และยังไม่ทำงานเบื้องหลังหรือ Android Auto กรุณาทดสอบโดยจอดรถหรือใช้ตำแหน่งจำลองก่อน ห้ามใช้เป็นระบบนำทางหลักขณะขับรถ",
+                "Uses GPS and Mapbox Directions maneuvers. No map matching, background guidance or Android Auto turn-by-turn. Test while parked or with simulated locations, not as your primary driving navigator."))
+            .setNegativeButton(tr("ยกเลิก","Cancel"),null)
+            .setPositiveButton(tr("เริ่มทดสอบ","Start test"),(d,w)->{
+                mapboxGuiding=true;
+                mapboxNextStep=1;
+                lastSpokenStep=-1;
+                offRouteFixes=0;
+                reroutingMapbox=false;
+                followLocation=true;
+                if(mapboxVoice==null) {
+                    mapboxVoice=new TextToSpeech(this,result->{
+                        if(result==TextToSpeech.SUCCESS && mapboxVoice!=null)
+                            mapboxVoice.setLanguage(new Locale("th","TH"));
+                    });
+                }
+                refreshNavigationAction();
+                routeSummary.setText(tr("กำลังติดตาม GPS · Mapbox (ทดสอบ)",
+                    "Following GPS · Mapbox (experimental)"));
+                locateOnce();
+            }).show();
+    }
+
+    private void stopMapboxGuidance() {
+        if(!mapboxGuiding)return;
+        mapboxGuiding=false;
+        reroutingMapbox=false;
+        if(mapboxVoice!=null)mapboxVoice.stop();
+        if(initialized && destination!=null) {
+            refreshNavigationAction();
+            if(routeSummary!=null)routeSummary.setText(
+                tr("หยุดนำทางทดลอง · เลือกเส้นทางเพื่อเริ่มใหม่",
+                   "Guidance stopped · Select a route to restart"));
+        }
+    }
+
+    private static float distanceMetres(LatLng a,LatLng b) {
+        float[] result=new float[1];
+        Location.distanceBetween(a.latitude,a.longitude,b.latitude,b.longitude,result);
+        return result[0];
+    }
+
+    // Equirectangular projection local to current GPS point; works for short
+    // road segments in Thailand. Valid accuracy is required before using it.
+    private static float nearestRouteDistance(LatLng current,List<LatLng> geometry) {
+        double latScale=111195d;
+        double lonScale=latScale*Math.cos(Math.toRadians(current.latitude));
+        double best=Double.POSITIVE_INFINITY;
+        for(int i=1;i<geometry.size();i++) {
+            LatLng a=geometry.get(i-1),b=geometry.get(i);
+            double ax=(a.longitude-current.longitude)*lonScale;
+            double ay=(a.latitude-current.latitude)*latScale;
+            double bx=(b.longitude-current.longitude)*lonScale;
+            double by=(b.latitude-current.latitude)*latScale;
+            double dx=bx-ax,dy=by-ay;
+            double length=dx*dx+dy*dy;
+            double t=length<0.001?0:Math.max(0,Math.min(1,-(ax*dx+ay*dy)/length));
+            double x=ax+t*dx,y=ay+t*dy;
+            best=Math.min(best,x*x+y*y);
+        }
+        return (float)Math.sqrt(best);
+    }
+
+    private void speakMapbox(String instruction) {
+        if(mapboxVoice!=null && instruction!=null && !instruction.isEmpty())
+            mapboxVoice.speak(instruction,TextToSpeech.QUEUE_FLUSH,null,"mapbox-guidance");
+    }
+
+    private void updateMapboxGuidance(Location fix) {
+        if(!mapboxGuiding || selectedMapboxRoute==null ||
+           selectedMapboxRoute.steps.isEmpty() || reroutingMapbox)return;
+        if(!fix.hasAccuracy() || fix.getAccuracy()>70f || !hasFreshAccurateFix())return;
+        LatLng current=new LatLng(fix.getLatitude(),fix.getLongitude());
+        if(nearestRouteDistance(current,selectedMapboxRoute.geometry)>90f)offRouteFixes++;
+        else offRouteFixes=0;
+        long now=SystemClock.elapsedRealtime();
+        if(offRouteFixes>=3 && now-lastMapboxReroute>30000L) {
+            rerouteMapbox(current);
+            return;
+        }
+        if(mapboxNextStep>=selectedMapboxRoute.steps.size())return;
+        MapboxDirectionsClient.Step step=selectedMapboxRoute.steps.get(mapboxNextStep);
+        float remaining=distanceMetres(current,step.point);
+        String instruction=step.instruction.isEmpty()?
+            tr("ดำเนินต่อไปตามเส้นทาง","Continue on the route"):step.instruction;
+        routeSummary.setText(instruction+" · "+Math.round(remaining)+" m · Mapbox");
+        if(remaining<=150f && lastSpokenStep!=mapboxNextStep) {
+            lastSpokenStep=mapboxNextStep;
+            speakMapbox(instruction);
+        }
+        if(remaining<=35f) {
+            if("arrive".equals(step.type)) {
+                speakMapbox(tr("ถึงจุดหมายแล้ว","You have arrived"));
+                stopMapboxGuidance();
+                routeSummary.setText(tr("ถึงจุดหมายแล้ว","You have arrived"));
+            } else {
+                mapboxNextStep++;
+                lastSpokenStep=-1;
+            }
+        }
+    }
+
+    private void rerouteMapbox(LatLng from) {
+        if(destination==null || reroutingMapbox)return;
+        reroutingMapbox=true;
+        offRouteFixes=0;
+        lastMapboxReroute=SystemClock.elapsedRealtime();
+        final int generation=++mapboxRouteGeneration;
+        final LatLng target=destination;
+        routeSummary.setText(tr("ออกนอกเส้นทาง · Mapbox กำลังคำนวณใหม่…",
+            "Off-route · Mapbox recalculating…"));
+        MapboxDirectionsClient.request(this,from,target,false,new MapboxDirectionsClient.Callback(){
+            @Override public void success(List<MapboxDirectionsClient.Route> routes) {
+                if(!mapboxGuiding || isFinishing() || mapboxRouteGeneration!=generation ||
+                   destination==null || !destination.equals(target))return;
+                mapboxAlternatives.clear();
+                mapboxAlternatives.addAll(routes);
+                selectedMapboxRoute=routes.get(0);
+                mapboxNextStep=1;
+                lastSpokenStep=-1;
+                reroutingMapbox=false;
+                drawRoute(selectedMapboxRoute.geometry,selectedMapboxRoute.meters,
+                    selectedMapboxRoute.seconds,tr("รถยนต์ · Mapbox","Driving · Mapbox"));
+                speakMapbox(tr("คำนวณเส้นทางใหม่แล้ว","Route recalculated"));
+            }
+            @Override public void failure(String message) {
+                if(mapboxRouteGeneration!=generation || !mapboxGuiding)return;
+                stopMapboxGuidance();
+                routeSummary.setText(tr("ออกนอกเส้นทาง · คำนวณใหม่ไม่สำเร็จ",
+                    "Off-route · reroute unavailable")+" · "+message);
+            }
+        });
+    }
+
     /** Render only live SDK guidance, never reuse RouteSearch preview as turn instructions. */
     private void updateLiveGuidanceState() {
-        if(routePanel==null || destination==null)return;
+        if(routePanel==null || destination==null || mapboxGuiding)return;
         String phase=NaviGuidanceStore.phase(this);
         NaviGuidanceStore.Snapshot live=NaviGuidanceStore.fresh(this);
         if(live!=null) {
@@ -1823,10 +2073,11 @@ public final class MainActivity extends Activity implements
         if(!initialized || destination==null)return;
         Button b=findViewById(R.id.startNavigationButton);
         if(b==null)return;
-        boolean running=NaviGuidanceStore.isNavigating(this);
+        boolean running=NaviGuidanceStore.isNavigating(this) || mapboxGuiding;
         boolean launching="planning".equals(NaviGuidanceStore.phase(this));
         b.setEnabled(!launching);
-        b.setVisibility(NavSdkBridge.isInstalled() &&
+        b.setVisibility((NavSdkBridge.isInstalled() ||
+            (selectedMapboxRoute!=null && MapboxDirectionsClient.configured(this))) &&
             (running || hasRoutePreview) &&
             modeGroup.getCheckedRadioButtonId()!=R.id.modeWalk ? View.VISIBLE:View.GONE);
         b.setText(launching ? tr("กำลังเริ่มนำทาง…","Starting navigation…") :
@@ -1846,6 +2097,8 @@ public final class MainActivity extends Activity implements
     }
 
     @Override protected void onPause() {
+        // Directions prototype is foreground-only, not Android Auto turn-by-turn.
+        if(mapboxGuiding)stopMapboxGuidance();
         if (platformLocation != null) platformLocation.stop();
         if (locationClient != null) locationClient.stopLocation();
         if (pendingSearch != null) searchHandler.removeCallbacks(pendingSearch);
@@ -1861,6 +2114,7 @@ public final class MainActivity extends Activity implements
             locationClient.onDestroy();
         }
         if (mapView != null) mapView.onDestroy();
+        if(mapboxVoice!=null){mapboxVoice.shutdown();mapboxVoice=null;}
         super.onDestroy();
     }
 
