@@ -37,7 +37,8 @@ public final class TripStore {
     }
     public static void setLocation(Context c, LatLng l) {
         if (l != null) prefs(c).edit().putString("lat",Double.toString(l.latitude))
-                .putString("lon",Double.toString(l.longitude)).putLong("location_time",System.currentTimeMillis()).apply();
+                .putString("lon",Double.toString(l.longitude)).putLong("location_time",System.currentTimeMillis())
+                .putLong(LOCATION,System.currentTimeMillis()).apply();
     }
     public static void setLocation(Context c, Location fix) {
         if(fix==null || !Double.isFinite(fix.getLatitude()) ||
@@ -46,7 +47,8 @@ public final class TripStore {
         SharedPreferences.Editor e=prefs(c).edit()
             .putString("lat",Double.toString(fix.getLatitude()))
             .putString("lon",Double.toString(fix.getLongitude()))
-            .putLong("location_time",System.currentTimeMillis());
+            .putLong("location_time",System.currentTimeMillis())
+            .putLong(LOCATION,System.currentTimeMillis());
         if(fix.hasAccuracy() && fix.getAccuracy()>0f &&
             Float.isFinite(fix.getAccuracy())) {
             e.putFloat("location_accuracy",fix.getAccuracy())
