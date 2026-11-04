@@ -230,8 +230,8 @@ public final class SettingsActivity extends Activity {
                 break;
             case "navigation":
                 section(tx("ประเภทยานพาหนะ","Vehicle profile"));groupStart();
-                segmented(new String[]{tx("รถยนต์","Car"),tx("รถบรรทุก¹","Truck¹"),tx("มอเตอร์ไซค์¹","Moto¹")},
-                    "vehicle_profile",new String[]{"car","truck","motorcycle"},"car");
+                segmented(new String[]{tx("รถยนต์","Car"),tx("ไฟฟ้า¹","EV¹"),tx("บรรทุก¹","Truck¹"),tx("จยย.¹","Moto¹"),tx("รถบัส¹","Bus¹")},
+                    "vehicle_profile",new String[]{"car","ev","truck","motorcycle","bus"},"car");
                 TextView vehicleNote=label(tx("¹ ต้องใช้ผู้ให้บริการเส้นทางที่รองรับข้อจำกัดเฉพาะรถ ไม่ใช้เส้นทางรถยนต์แทน",
                     "¹ Requires vehicle-specific routing; car routes will not be substituted."),12,secondary,false);
                 vehicleNote.setPadding(dp(8),dp(8),dp(8),dp(2));content.addView(vehicleNote);
