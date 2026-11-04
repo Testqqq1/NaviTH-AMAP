@@ -1,0 +1,66 @@
+name: Test NaviTH MCP bridge (no live API calls)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'integrations/mcp-bridge/**'
+      - '.github/workflows/mcp-bridge-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  mcp-bridge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Check out pinned MCP source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check syntax
+        run: |
+          node --check integrations/mcp-bridge/rpc.mjs
+          node --check integrations/mcp-bridge/server.mjs
+          node --check integrations/mcp-bridge/smoke.mjs
+
+      - name: Install isolated MCP dependencies (never run lifecycle scripts)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd third_party/mcp/amap-maps-mcp-server
+          npm install --omit=dev --ignore-scripts --no-audit --no-fund
+
+      - name: Test STDIO MCP handshake with test key only
+        env:
+          AMAP_MAPS_API_KEY: TEST_NOT_A_REAL_KEY
+        run: node integrations/mcp-bridge/smoke.mjs
+
+      - name: Verify local bridge health and protected API
+        shell: bash
+        env:
+          AMAP_MAPS_API_KEY: TEST_NOT_A_REAL_KEY
+          NAVITH_BRIDGE_TOKEN: this-is-a-long-test-token-not-a-secret
+          NAVITH_BRIDGE_HOST: 127.0.0.1
+        run: |
+          set -euo pipefail
+          node integrations/mcp-bridge/server.mjs > "$RUNNER_TEMP/mcp-bridge.log" 2>&1 &
+          child="$!"
+          trap 'kill "$child" 2>/dev/null || true' EXIT
+          for i in $(seq 1 25); do
+            if curl -fsS --max-time 1 http://127.0.0.1:3088/health > "$RUNNER_TEMP/health.json"; then break; fi
+            sleep 1
+          done
+          node -e 'const f=require("fs");const d=JSON.parse(f.readFileSync(process.env.RUNNER_TEMP+"/health.json"));if(d.status!=="ready"||d.tools<7)process.exit(1); console.log("MCP tools ready:",d.tools)'
+          status="$(curl -s --max-time 3 -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"query":"Bangkok"}' http://127.0.0.1:3088/v1/places)"
+          if [[ "$status" != "401" ]]; then echo "::error::Expected 401 without access token, got $status"; exit 1; fi
+          echo 'Authentication enforced, no live AMAP requests were made.'
