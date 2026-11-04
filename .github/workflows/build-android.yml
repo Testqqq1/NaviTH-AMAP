@@ -1,0 +1,45 @@
+name: Build NaviTH Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Show DEMO signing certificate SHA1
+        run: keytool -list -v -keystore demo-signing/TEST_ONLY.jks -storepass android -alias demo | grep 'SHA1:'
+
+      - name: Build debug APK
+        env:
+          AMAP_KEY: ${{ secrets.AMAP_KEY }}
+        run: gradle --no-daemon :app:assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NaviTH-debug-APK
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

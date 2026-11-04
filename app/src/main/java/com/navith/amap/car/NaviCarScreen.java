@@ -1,0 +1,255 @@
+package com.navith.amap.car;
+
+import android.Manifest;
+import android.app.Presentation;
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.graphics.Rect;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
+import android.os.Handler;
+import android.os.Looper;
+import android.hardware.display.DisplayManager;
+import android.hardware.display.VirtualDisplay;
+import android.util.Log;
+
+import androidx.annotation.NonNull;
+import androidx.car.app.CarContext;
+import androidx.car.app.Screen;
+import androidx.car.app.SurfaceCallback;
+import androidx.car.app.SurfaceContainer;
+import androidx.car.app.model.Action;
+import androidx.car.app.model.ActionStrip;
+import androidx.car.app.model.MessageTemplate;
+import androidx.car.app.model.Pane;
+import androidx.car.app.model.PaneTemplate;
+import androidx.car.app.model.Row;
+import androidx.car.app.model.Template;
+import androidx.car.app.managers.AppManager;
+import androidx.car.app.navigation.model.MapWithContentTemplate;
+import androidx.car.app.navigation.model.MessageInfo;
+import androidx.car.app.navigation.model.NavigationTemplate;
+import androidx.lifecycle.Lifecycle;
+import androidx.lifecycle.LifecycleEventObserver;
+
+import com.amap.api.maps.AMap;
+import com.amap.api.maps.CameraUpdateFactory;
+import com.amap.api.maps.MapView;
+import com.amap.api.maps.MapsInitializer;
+import com.amap.api.maps.model.BitmapDescriptorFactory;
+import com.amap.api.maps.model.LatLng;
+import com.amap.api.maps.model.LatLngBounds;
+import com.amap.api.maps.model.MarkerOptions;
+import com.amap.api.maps.model.PolylineOptions;
+import com.amap.api.services.core.LatLonPoint;
+import com.amap.api.services.route.BusRouteResult;
+import com.amap.api.services.route.DrivePath;
+import com.amap.api.services.route.DriveRouteResult;
+import com.amap.api.services.route.DriveStep;
+import com.amap.api.services.route.RideRouteResult;
+import com.amap.api.services.route.RouteSearch;
+import com.amap.api.services.route.WalkRouteResult;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Android Auto map-and-route-PREVIEW screen.
+ * Not turn-by-turn navigation. Do NOT synthesize maneuvers/lanes from preview geometry.
+ * AMap MapView on a virtual-display Surface is experimental and must be tested on DHU.
+ */
+final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch.OnRouteSearchListener {
+    private static final String TAG="NaviTH-Car";
+    private static final LatLng BANGKOK=new LatLng(13.7563,100.5018);
+    private final SharedPreferences prefs;
+    private final SharedPreferences.OnSharedPreferenceChangeListener changes;
+    private VirtualDisplay virtualDisplay;
+    private Presentation presentation;
+    private MapView mapView;
+    private AMap map;
+    private RouteSearch routeSearch;
+    private LocationManager locationManager;
+    private final LocationListener locationListener = new LocationListener() {
+        @Override public void onLocationChanged(@NonNull Location loc) {
+            if (loc.hasAccuracy() && loc.getAccuracy() > 150f) return;
+            TripStore.setLocation(getCarContext(), new LatLng(loc.getLatitude(),loc.getLongitude()));
+        }
+    };
+    private boolean routing=false;
+    private LatLng requestedDestination;
+
+    NaviCarScreen(@NonNull CarContext c) {
+        super(c);
+        prefs=TripStore.prefs(c);
+        changes=(shared,key) -> {
+            if (TripStore.DESTINATION.equals(key) || TripStore.ROUTE.equals(key) || TripStore.LOCATION.equals(key)) {
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    updateMap();invalidate();
+                    if (TripStore.DESTINATION.equals(key) && TripStore.destination(getCarContext())!=null) calculateCarRoute();
+                });
+            }
+        };
+        prefs.registerOnSharedPreferenceChangeListener(changes);
+        getLifecycle().addObserver((LifecycleEventObserver)(source,event)->{
+            if (event == Lifecycle.Event.ON_DESTROY) {
+                prefs.unregisterOnSharedPreferenceChangeListener(changes);
+                if (locationManager != null) try {locationManager.removeUpdates(locationListener);}catch(SecurityException ignored){}
+                releasePresentation();
+            }
+        });
+        c.getCarService(AppManager.class).setSurfaceCallback(this);
+        // Start only if phone granted location. No background permission is requested.
+        if (hasLocationPermission()) try {
+            locationManager=(LocationManager)c.getSystemService(Context.LOCATION_SERVICE);
+            if (locationManager != null) {
+                if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER))
+                    locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,1500L,5f,locationListener,Looper.getMainLooper());
+                else if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))
+                    locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,5000L,20f,locationListener,Looper.getMainLooper());
+            }
+        } catch (SecurityException e) { Log.w(TAG,"Location permission not available in car session",e); }
+    }
+
+    @NonNull @Override public Template onGetTemplate() {
+        if (!TripStore.consented(getCarContext())) {
+            return new MessageTemplate.Builder("เปิด NaviTH บนมือถือเพื่ออ่านและยอมรับนโยบาย AMAP ก่อน")
+                    .setTitle("ต้องยอมรับการใช้แผนที่").build();
+        }
+        if (!hasLocationPermission()) {
+            return new MessageTemplate.Builder("อนุญาตตำแหน่งในแอป NaviTH บนโทรศัพท์ แล้วเชื่อม Android Auto อีกครั้ง")
+                    .setTitle("ต้องเปิด GPS บนมือถือ").build();
+        }
+        String dest=TripStore.destinationName(getCarContext());
+        String summary=TripStore.summary(getCarContext());
+        String message = dest.isEmpty() ? "ค้นหาสถานที่จากปุ่มด้านบน หรือเลือกปลายทางจากมือถือ" :
+                (routing ? "กำลังคำนวณเส้นทาง..." : (summary.isEmpty()?"เลือก: "+dest+" · รอผลการคำนวณเส้นทาง":"ไป "+dest+" · "+summary));
+        Action search=new Action.Builder().setTitle("ค้นหา").setOnClickListener(() ->
+                getScreenManager().push(new NaviSearchScreen(getCarContext(),this))).build();
+        ActionStrip.Builder actionBar=new ActionStrip.Builder().addAction(search);
+        if (!dest.isEmpty()) {
+            actionBar.addAction(new Action.Builder().setTitle("ล้างเส้นทาง")
+                    .setOnClickListener(() -> TripStore.clearDestination(getCarContext())).build());
+        }
+        if (getCarContext().getCarAppApiLevel()>=7) {
+            Pane pane=new Pane.Builder().addRow(new Row.Builder().setTitle("NaviTH · แผนที่และตัวอย่างเส้นทาง")
+                    .addText(message).build()).build();
+            PaneTemplate content=new PaneTemplate.Builder(pane).setTitle("NaviTH Maps").build();
+            return new MapWithContentTemplate.Builder().setContentTemplate(content)
+                    .setActionStrip(actionBar.build()).build();
+        }
+        // Older Android Auto hosts: navigation map surface + clear preview information.
+        return new NavigationTemplate.Builder().setActionStrip(actionBar.build())
+                .setNavigationInfo(new MessageInfo.Builder("NaviTH · ตัวอย่างเส้นทาง").setText(message).build())
+                .build();
+    }
+
+    private boolean hasLocationPermission() {
+        return getCarContext().checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED
+                || getCarContext().checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED;
+    }
+
+    void onPlaceSelected(LatLng point,String name) {
+        TripStore.setDestination(getCarContext(),point,name); // Preference listener triggers route preview.
+    }
+
+    private void calculateCarRoute() {
+        LatLng dst=TripStore.destination(getCarContext());
+        LatLng from=TripStore.location(getCarContext());
+        // A cached location is not safe to treat as live while driving; route preview only.
+        if (dst==null || from==null || !TripStore.hasRecentLocation(getCarContext())) {
+            routing=false;invalidate();return;
+        }
+        try {
+            if (routeSearch == null) {routeSearch=new RouteSearch(getCarContext());routeSearch.setRouteSearchListener(this);}
+            routing=true;requestedDestination=dst;invalidate();
+            RouteSearch.FromAndTo f=new RouteSearch.FromAndTo(
+                    new LatLonPoint(from.latitude,from.longitude),
+                    new LatLonPoint(dst.latitude,dst.longitude));
+            routeSearch.calculateDriveRouteAsyn(new RouteSearch.DriveRouteQuery(
+                    f,RouteSearch.DRIVING_SINGLE_DEFAULT,null,null,""));
+        } catch (Exception e) { routing=false;Log.w(TAG,"AMAP preview routing unavailable",e);invalidate(); }
+    }
+    @Override public void onDriveRouteSearched(DriveRouteResult result,int error) {
+        new Handler(Looper.getMainLooper()).post(() -> {
+            routing=false;
+            LatLng dest=TripStore.destination(getCarContext());
+            if (requestedDestination==null || dest==null || !requestedDestination.equals(dest)) {invalidate();return;}
+            if (error==1000 && result!=null && result.getPaths()!=null && !result.getPaths().isEmpty()) {
+                DrivePath path=result.getPaths().get(0);
+                List<LatLng> points=new ArrayList<>();
+                if (path.getSteps()!=null) for (DriveStep step:path.getSteps()) if (step.getPolyline()!=null)
+                    for(LatLonPoint p:step.getPolyline()) points.add(new LatLng(p.getLatitude(),p.getLongitude()));
+                TripStore.setRoute(getCarContext(),points,path.getDistance(),path.getDuration(),"รถยนต์");
+            }
+            updateMap();invalidate();
+        });
+    }
+    @Override public void onWalkRouteSearched(WalkRouteResult result,int code) {}
+    @Override public void onBusRouteSearched(BusRouteResult result,int code) {}
+    @Override public void onRideRouteSearched(RideRouteResult result,int code) {}
+
+    @Override public void onSurfaceAvailable(@NonNull SurfaceContainer surface) {
+        releasePresentation();
+        if (!TripStore.consented(getCarContext()) || surface.getSurface()==null
+                || surface.getWidth()<=0 || surface.getHeight()<=0 || surface.getDpi()<=0) return;
+        try {
+            // Use AMAP with the host-owned Surface. Unlike a cast, this surface is sized by the car host.
+            MapsInitializer.updatePrivacyShow(getCarContext(),true,true);
+            MapsInitializer.updatePrivacyAgree(getCarContext(),true);
+            MapsInitializer.updateCountryCode("TH");
+            MapsInitializer.initRegionLanguageType(7);
+            DisplayManager manager=(DisplayManager)getCarContext().getSystemService(Context.DISPLAY_SERVICE);
+            virtualDisplay=manager.createVirtualDisplay("NaviTH-AMAP-AA",surface.getWidth(),
+                    surface.getHeight(),surface.getDpi(),surface.getSurface(),
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY);
+            presentation=new Presentation(getCarContext(),virtualDisplay.getDisplay());
+            mapView=new MapView(presentation.getContext());
+            mapView.onCreate(null);
+            presentation.setContentView(mapView);
+            presentation.show();
+            mapView.onResume();
+            map=mapView.getMap();
+            map.setMapType(AMap.MAP_TYPE_NORMAL);
+            map.getUiSettings().setZoomControlsEnabled(false);
+            map.getUiSettings().setCompassEnabled(false);
+            updateMap();
+        } catch (Exception e) {
+            Log.e(TAG,"MapView on virtual display needs real AA/DHU validation",e);
+            releasePresentation();
+        }
+    }
+
+    private void updateMap() {
+        if (map==null) return;
+        map.clear();
+        LatLng from=TripStore.location(getCarContext());
+        LatLng dest=TripStore.destination(getCarContext());
+        List<LatLng> path=TripStore.route(getCarContext());
+        if (from!=null) map.addMarker(new MarkerOptions().position(from).title("ตำแหน่งล่าสุด")
+                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
+        if (dest!=null) map.addMarker(new MarkerOptions().position(dest).title(TripStore.destinationName(getCarContext())));
+        if (path.size()>=2) {
+            map.addPolyline(new PolylineOptions().addAll(path).width(15f).color(0xff00b59e).zIndex(2));
+            LatLngBounds.Builder bounds=new LatLngBounds.Builder();
+            for(LatLng p:path) bounds.include(p);
+            if (from!=null) bounds.include(from);
+            if (dest!=null) bounds.include(dest);
+            try { map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds.build(),80)); }
+            catch (Exception ignored) { map.moveCamera(CameraUpdateFactory.newLatLngZoom(dest!=null?dest:BANGKOK,12)); }
+        } else map.moveCamera(CameraUpdateFactory.newLatLngZoom(dest!=null?dest:(from!=null?from:BANGKOK),14));
+    }
+    @Override public void onSurfaceDestroyed(@NonNull SurfaceContainer s) { releasePresentation(); }
+    @Override public void onScroll(float dx,float dy) { if (map!=null) map.moveCamera(CameraUpdateFactory.scrollBy(dx,dy)); }
+    @Override public void onScale(float x,float y,float factor) {
+        if(map!=null && factor>0) map.moveCamera(CameraUpdateFactory.zoomBy((float)(Math.log(factor)/Math.log(2))));
+    }
+    @Override public void onVisibleAreaChanged(@NonNull Rect area) { /* host overlays are outside our map view */ }
+    private void releasePresentation() {
+        map=null;
+        if(mapView!=null){try{mapView.onPause();mapView.onDestroy();}catch(Exception ignored){} mapView=null;}
+        if(presentation!=null){try{presentation.dismiss();}catch(Exception ignored){}presentation=null;}
+        if(virtualDisplay!=null){try{virtualDisplay.release();}catch(Exception ignored){}virtualDisplay=null;}
+    }
+}

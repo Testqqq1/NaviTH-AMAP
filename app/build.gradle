@@ -1,0 +1,78 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Prefer a CI secret/property. For local Android Studio builds only, also read
+// local.properties (ignored by Git). Never commit your personal key.
+def localConfig = new Properties()
+def localConfigFile = rootProject.file('local.properties')
+if (localConfigFile.exists()) {
+    localConfigFile.withInputStream { localConfig.load(it) }
+}
+def configuredAmapKey = [project.findProperty('AMAP_KEY'), System.getenv('AMAP_KEY'), localConfig.getProperty('AMAP_KEY')]
+        .find { it != null && it.toString().trim() } ?: 'YOUR_AMAP_KEY'
+
+android {
+    namespace 'com.navith.amap'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.navith.amap'
+        minSdk 26
+        targetSdk 35
+        versionCode 3
+        versionName '0.3.0-aa-preview'
+        manifestPlaceholders = [AMAP_KEY: configuredAmapKey.toString()]
+        ndk { abiFilters 'arm64-v8a', 'armeabi-v7a' }
+    }
+    signingConfigs {
+        // A public demo key: use only for private testing. Never use for a release build!
+        demo {
+            storeFile file('../demo-signing/TEST_ONLY.jks')
+            storePassword 'android'
+            keyAlias 'demo'
+            keyPassword 'android'
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.demo
+            applicationIdSuffix ''
+            debuggable true
+        }
+        release {
+            minifyEnabled false
+            // Intentionally no release signing; configure a PRIVATE signing key yourself.
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    packaging {
+        jniLibs { useLegacyPackaging true }
+    }
+}
+
+dependencies {
+    // Offline/local AMAP SDK bundle supplied by the user (2026-08-05).
+    // Map, Location, Search classes are combined in this one JAR.
+    // Native ARM libraries are loaded from src/main/jniLibs automatically.
+    // DO NOT also add an AMAP Maven dependency: duplicate classes will break D8.
+    implementation files('libs/amap-combined-20260805.jar')
+    implementation 'androidx.car.app:app:1.7.0'
+    implementation 'androidx.car.app:app-projected:1.7.0'
+}
+
+
+// Store large AMAP .so binaries in a compressed archive so each repository file
+// can be uploaded through GitHub's mobile web UI (<25 MB/file).
+// The output stays in build/, not in tracked source folders.
+tasks.register('unpackAmapNatives', Copy) {
+    from(zipTree('libs/amap-native-android.zip'))
+    into(layout.buildDirectory.dir('generated/amapNative'))
+}
+android.sourceSets.main.jniLibs.srcDirs += [file("${buildDir}/generated/amapNative")]
+tasks.named('preBuild').configure { dependsOn 'unpackAmapNatives' }
+tasks.matching { it.name.startsWith('merge') && it.name.endsWith('NativeLibs') }
+        .configureEach { dependsOn 'unpackAmapNatives' }
