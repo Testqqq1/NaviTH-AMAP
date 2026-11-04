@@ -1015,6 +1015,7 @@ public final class MainActivity extends Activity implements
         routeAction.setTextColor(Color.WHITE);
         routePanel.setVisibility(View.VISIBLE);
         homePanel.setVisibility(View.GONE);
+        applyHomeChrome();
         routeExpanded.setVisibility(View.GONE);
         routeOpen=false;
         statusText.setVisibility(View.GONE);
@@ -1430,7 +1431,18 @@ public final class MainActivity extends Activity implements
             "landscape".equals(orientation)?ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE:
                 ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
         if(getRequestedOrientation()!=desired)setRequestedOrientation(desired);
-        if(p.getBoolean("keep_screen_on",false)){
+        boolean keepAwake=p.getBoolean("keep_screen_on",false);
+        if(keepAwake && p.getBoolean("battery_aware",true)) {
+            Intent battery=registerReceiver(null,
+                new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+            if(battery!=null) {
+                int level=battery.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL,-1);
+                int scale=battery.getIntExtra(android.os.BatteryManager.EXTRA_SCALE,-1);
+                if(level>=0 && scale>0 && (100f*level/scale)<=40f)
+                    keepAwake=false;
+            }
+        }
+        if(keepAwake){
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         } else {
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
