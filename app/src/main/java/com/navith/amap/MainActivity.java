@@ -575,6 +575,10 @@ public final class MainActivity extends Activity implements
                 searchAddressFallback(term);
                 return;
             }
+            if(code!=1000 && McpPlacesClient.isConfigured(this)) {
+                showExternalSearchResults(term,false);
+                return;
+            }
             if(code!=1000 || result==null || result.getPois()==null || result.getPois().isEmpty()) {
                 TextView msg=new TextView(this);
                 msg.setPadding(dp(16),dp(20),dp(16),dp(20));
@@ -663,7 +667,7 @@ public final class MainActivity extends Activity implements
             msg.setTextColor(getColor(R.color.nav_secondary));
             resultsList.addView(msg);
         }catch(Exception e){
-            showEmptyAddressResults();
+            showExternalSearchResults(term,true);
         }
     }
 
@@ -681,13 +685,13 @@ public final class MainActivity extends Activity implements
 
     private void renderGeocoding(GeocodeResult result,int code) {
         if(!initialized || isFinishing() || searchOverlay.getVisibility()!=View.VISIBLE)return;
-        if(result==null || result.getGeocodeQuery()==null)return;
-        String query=result.getGeocodeQuery().getLocationName();
+        String query=result!=null && result.getGeocodeQuery()!=null
+            ? result.getGeocodeQuery().getLocationName() : searchInput.getText().toString().trim();
         if(query==null || !query.equals(searchInput.getText().toString().trim()))return;
         resultsList.removeAllViews();
-        if(code!=1000 || result.getGeocodeAddressList()==null ||
+        if(code!=1000 || result==null || result.getGeocodeAddressList()==null ||
             result.getGeocodeAddressList().isEmpty()) {
-            showEmptyAddressResults();
+            showExternalSearchResults(query,true);
             return;
         }
         int count=0;
@@ -701,6 +705,44 @@ public final class MainActivity extends Activity implements
             if(++count>=8)break;
         }
         if(count==0)showEmptyAddressResults();
+    }
+
+    private void showExternalSearchResults(String term, boolean geocode) {
+        if(searchOverlay.getVisibility()!=View.VISIBLE ||
+            !term.equals(searchInput.getText().toString().trim()))return;
+        if(!McpPlacesClient.isConfigured(this)) {
+            showEmptyAddressResults();return;
+        }
+        resultsList.removeAllViews();
+        TextView loading=new TextView(this);
+        loading.setText(tr("กำลังค้นหาจากบริการสำรอง…","Searching optional service…"));
+        loading.setTextSize(13);
+        loading.setTextColor(getColor(R.color.nav_secondary));
+        loading.setPadding(dp(14),dp(15),dp(14),dp(15));
+        resultsList.addView(loading);
+        boolean started=McpPlacesClient.search(this,term,geocode,(places,error)->{
+            if(isFinishing() || !initialized || 
+               searchOverlay.getVisibility()!=View.VISIBLE ||
+               !term.equals(searchInput.getText().toString().trim()))return;
+            resultsList.removeAllViews();
+            int n=0;
+            for(McpPlacesClient.Place place:places){
+                addResultItem(place.name,
+                    place.address.isEmpty()?tr("AMAP MCP (ผลสำรอง)","AMAP MCP fallback"):place.address,
+                    new LatLng(place.latitude,place.longitude),false);
+                if(++n==8)break;
+            }
+            if(n==0){
+                TextView hint=new TextView(this);
+                hint.setText(error!=null?tr("บริการ MCP ไม่พร้อม • ตรวจ URL/Token",
+                    "MCP unavailable • check URL/token"):
+                    tr("ไม่พบข้อมูลเพิ่มเติมในพื้นที่นี้","No additional results in this region"));
+                hint.setTextColor(getColor(R.color.nav_secondary));
+                hint.setPadding(dp(14),dp(18),dp(14),dp(18));
+                resultsList.addView(hint);
+            }
+        });
+        if(!started)showEmptyAddressResults();
     }
 
     private void reverseSelectedAddress(LatLng point) {
