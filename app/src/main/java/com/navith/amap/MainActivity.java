@@ -615,7 +615,7 @@ public final class MainActivity extends Activity implements
                 if(navigating && accuracy<=70f) {
                     CameraPosition.Builder camera=new CameraPosition.Builder(map.getCameraPosition())
                         .target(myLocation)
-                        .tilt(getViewPrefs().getBoolean("view3d",true)?58f:0f)
+                        .tilt(getViewPrefs().getBoolean("view3d",true)?48f:0f)
                         .zoom(Math.max(16.5f,zoom));
                     if(fix.hasBearing() && fix.hasSpeed() && fix.getSpeed()>1.5f) {
                         float raw=fix.getBearing();
@@ -1414,7 +1414,7 @@ public final class MainActivity extends Activity implements
         map.showMapText(p.getBoolean("labels",true));
         CameraPosition current = map.getCameraPosition();
         map.moveCamera(CameraUpdateFactory.newCameraPosition(
-                new CameraPosition.Builder(current).tilt(threed ? 55f : 0f).build()));
+                new CameraPosition.Builder(current).tilt(threed ? 40f : 0f).build()));
         // Map controls stay in the two-button surface; individual layers are edited in a sheet.
         if (myMarker != null) {
             myMarker.setFlat(true);
@@ -2102,6 +2102,14 @@ public final class MainActivity extends Activity implements
         View search=findViewById(R.id.topSearchBar);
         if(search!=null)search.setVisibility(active?View.GONE:View.VISIBLE);
         if(active) {
+            // Single transition into following mode; do not fit the whole route each GPS tick.
+            if(map!=null && myLocation!=null) {
+                CameraPosition current=map.getCameraPosition();
+                CameraPosition.Builder follow=new CameraPosition.Builder(current)
+                    .target(myLocation).zoom(Math.max(16.5f,current.zoom))
+                    .tilt(getViewPrefs().getBoolean("view3d",true)?48f:0f);
+                map.animateCamera(CameraUpdateFactory.newCameraPosition(follow.build()));
+            }
             TextView phase=findViewById(R.id.activeNavPhase);
             TextView instruction=findViewById(R.id.activeNavInstruction);
             TextView distance=findViewById(R.id.activeNavDistance);
