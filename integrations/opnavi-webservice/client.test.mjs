@@ -26,7 +26,7 @@ test('Geocode uses verified host and mandatory city adcode',async()=>{
   assert.equal(calls.at(-1).url.host,'sg-restapi.opnavi.com');
   assert.equal(calls.at(-1).url.pathname,'/v3/geocode/geo');
   assert.equal(calls.at(-1).url.searchParams.get('city'),'764000000');
-  assert.throws(()=>s.geocode({address:'Bangkok'}));
+  await assert.rejects(s.geocode({address:'Bangkok'}),/city\/adcode/);
 });
 test('Autocomplete and places use official endpoints',async()=>{
   assert.equal((await s.autocomplete({query:'cafe',city:'764000000'}))[0].name,'Bangkok Cafe');
