@@ -142,6 +142,33 @@ jobs:
               print('All prior stand-alone AMAP binaries replaced: YES')
           PY
 
+      - name: Verify Navigation runtime contract in bundled SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          jar='app/libs/amap-combined-20260805.jar'
+          test -s "$jar"
+          # Compile success does not detect reflection mistakes. Fail this test
+          # if required runtime component APIs are absent in the official JAR.
+          javap -classpath "$jar" com.amap.api.navi.AmapPageType > "$RUNNER_TEMP/page-type.txt"
+          javap -classpath "$jar" com.amap.api.navi.AmapNaviPage > "$RUNNER_TEMP/page.txt"
+          javap -classpath "$jar" com.amap.api.navi.AmapNaviParams > "$RUNNER_TEMP/params.txt"
+          javap -classpath "$jar" com.amap.api.navi.NaviSetting > "$RUNNER_TEMP/privacy.txt"
+          javap -classpath "$jar" com.amap.api.navi.AMapNavi > "$RUNNER_TEMP/engine.txt"
+          javap -classpath "$jar" com.amap.api.maps.model.Poi > "$RUNNER_TEMP/poi.txt"
+          javap -classpath "$jar" com.amap.api.navi.AMapNaviListener > "$RUNNER_TEMP/listener.txt"
+          grep -qE 'AmapPageType NAVI;' "$RUNNER_TEMP/page-type.txt"
+          grep -q 'showRouteActivity(' "$RUNNER_TEMP/page.txt"
+          grep -q 'exitRouteActivity(' "$RUNNER_TEMP/page.txt"
+          grep -q 'updatePrivacyShow(' "$RUNNER_TEMP/privacy.txt"
+          grep -q 'updatePrivacyAgree(' "$RUNNER_TEMP/privacy.txt"
+          grep -q 'addAMapNaviListener(' "$RUNNER_TEMP/engine.txt"
+          grep -q 'onNaviInfoUpdate(' "$RUNNER_TEMP/listener.txt"
+          grep -q 'onStartNavi(' "$RUNNER_TEMP/listener.txt"
+          grep -q 'onArriveDestination(' "$RUNNER_TEMP/listener.txt"
+          grep -q 'onReCalculateRouteForYaw(' "$RUNNER_TEMP/listener.txt"
+          echo 'Navigation component, privacy, GPS callbacks and rerouting APIs verified'
+
       - name: Check local demo signing certificate
         shell: bash
         run: |
