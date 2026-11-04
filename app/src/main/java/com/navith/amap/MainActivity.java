@@ -92,8 +92,8 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * NaviTH v0.1: foreground-only AMAP map, POI lookup, and route preview.
- * It is NOT turn-by-turn navigation and does not support Android Auto.
+ * NaviTH v0.5: AMAP map, search, route preview and Android Auto route-preview surface.
+ * Not turn-by-turn navigation; road-level guidance requires a Navigation SDK.
  */
 public final class MainActivity extends Activity implements
         PoiSearch.OnPoiSearchListener, RouteSearch.OnRouteSearchListener {
@@ -336,13 +336,13 @@ public final class MainActivity extends Activity implements
             routeSearch = new RouteSearch(this);
             routeSearch.setRouteSearchListener(this);
         } catch (Exception e) {
-            status("เริ่มบริการค้นหาเส้นทางไม่ได้: " + e.getMessage());
+            status(tr("เริ่มบริการค้นหาเส้นทางไม่ได้: ","Route service unavailable: ")+e.getMessage());
         }
 
         if ("YOUR_AMAP_KEY".equals(readApiKey())) {
-            status("ยังไม่มี AMAP API Key: ใส่ AMAP_KEY ก่อน Build เพื่อโหลดแผนที่จริง");
+            status(tr("ไม่มี AMAP API Key","Missing AMAP API Key"));
         } else {
-            status("พร้อมค้นหา • แตะค้างบนแผนที่เพื่อเลือกจุดหมาย");
+            status(tr("แตะค้นหาหรือแตะค้างเพื่อเลือกจุดหมาย","Tap search or long-press a destination"));
         }
         askForLocation();
     }
@@ -376,7 +376,7 @@ public final class MainActivity extends Activity implements
         super.onRequestPermissionsResult(code, permissions, results);
         if (code == REQ_LOCATION) {
             if (hasLocationPermission()) locateOnce();
-            else status("ไม่ได้อนุญาตตำแหน่ง • ยังค้นหาสถานที่ได้ แต่ต้องเปิด GPS เพื่อคำนวณจากตำแหน่งปัจจุบัน");
+            else status(tr("ยังไม่ได้อนุญาตตำแหน่ง","Location permission not granted"));
         }
     }
 
@@ -394,7 +394,7 @@ public final class MainActivity extends Activity implements
         }
         // Native GPS and network providers do not depend on AMAP's positioning server.
         platformLocation.start();
-        if (myLocation == null) status("กำลังค้นหา GPS ของโทรศัพท์ • รับพิกัดได้แม้ AMAP Network ล้มเหลว");
+        if (myLocation == null) status(tr("กำลังค้นหา GPS จากโทรศัพท์","Locating with device GPS"));
         try {
             if (locationClient == null) {
                 locationClient = new AMapLocationClient(getApplicationContext());
@@ -410,7 +410,7 @@ public final class MainActivity extends Activity implements
             }
             locationClient.startLocation();
         } catch (Exception e) {
-            if (myLocation == null) status("บริการ AMAP ไม่พร้อม • รอ GPS จาก Android");
+            if (myLocation == null) status(tr("AMAP ไม่พร้อม • รอ GPS จาก Android","AMAP unavailable; waiting for device GPS"));
         }
     }
 
@@ -447,7 +447,7 @@ public final class MainActivity extends Activity implements
             gpsStatus.setContentDescription(getString(R.string.my_position) + " ±"
                     + Math.round(accuracy) + (NaviLocale.thai(this) ? " เมตร" : " meters"));
         }
-        if (first) status("พบพิกัดแล้วจาก " + source + " • ค้นหาปลายทางได้");
+        if (first) status(tr("พบพิกัดจาก ","Location from ")+source);
     }
 
     private void updatePositionMarker(Location fix) {
@@ -482,9 +482,9 @@ public final class MainActivity extends Activity implements
                 acceptLocation(loc, "AMAP");
             } else if (myLocation == null) {
                 int code = loc == null ? -1 : loc.getErrorCode();
-                if (code == 4) status("AMAP ติดต่อเซิร์ฟเวอร์ตำแหน่งไม่ได้ (รหัส 4) • กำลังใช้ GPS ของโทรศัพท์แทน");
-                else if (code == 7) status("AMAP API Key/SHA1 ไม่ตรง (รหัส 7) • GPS ของ Android ยังใช้ได้");
-                else status("AMAP ตำแหน่งผิดพลาด (" + code + ") • รอ GPS ของโทรศัพท์");
+                if (code == 4) status(tr("AMAP เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ (4) • ใช้ GPS ของเครื่อง","AMAP location server unavailable (4); using device GPS"));
+                else if (code == 7) status(tr("AMAP Key/SHA1 ไม่ตรง (7) • ใช้ GPS ของเครื่อง","AMAP Key/SHA1 mismatch (7); device GPS remains available"));
+                else status(tr("AMAP ตำแหน่งผิดพลาด (","AMAP location error (")+code+tr(") • รอ GPS ของเครื่อง","); waiting for device GPS"));
             }
         });
     }
@@ -531,7 +531,7 @@ public final class MainActivity extends Activity implements
             activePoiSearch = search;
             search.searchPOIAsyn();
         } catch (Exception e) {
-            status("ค้นหาไม่ได้: " + e.getMessage());
+            status(tr("ค้นหาไม่สำเร็จ: ","Search failed: ")+e.getMessage());
         }
     }
 
@@ -622,34 +622,34 @@ public final class MainActivity extends Activity implements
                 .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)));
         destinationMarker.showInfoWindow();
         destinationText.setText(label);
-        routeSummary.setText("ระบุตำแหน่งแล้ว • กดแสดงเส้นทาง");
+        routeSummary.setText(tr("เลือกจุดหมายแล้ว • ดูเส้นทาง","Destination selected · View route"));
         routePanel.setVisibility(View.VISIBLE);
         routeExpanded.setVisibility(View.GONE);
         routeOpen=false;
         statusText.setVisibility(View.GONE);
         map.animateCamera(CameraUpdateFactory.newLatLngZoom(point, 15));
         ((Button)findViewById(R.id.routeButton)).setText(R.string.view_route);
-        status("เลือกจุดหมายแล้ว: " + label);
+        status(tr("เลือกจุดหมายแล้ว: ","Destination: ")+label);
     }
 
     private void calculateRoute() {
         if (destination == null) {
-            status("เลือกจุดหมายก่อน");
+            status(tr("เลือกจุดหมายก่อน","Choose a destination first"));
             return;
         }
         if (myLocation == null) {
-            status("ต้องมีตำแหน่งปัจจุบันก่อน • กด ◎ GPS");
+            status(tr("ต้องมีพิกัดปัจจุบัน • กดตำแหน่งของฉัน","Current location needed; tap My location"));
             if (hasLocationPermission()) locateOnce();
             else { locationRequested = false; askForLocation(); }
             return;
         }
         if (routeSearch == null) {
-            status("บริการคำนวณเส้นทางยังไม่พร้อม");
+            status(tr("บริการคำนวณเส้นทางยังไม่พร้อม","Route service unavailable"));
             return;
         }
         clearRouteLine();
         TripStore.clearRoute(this);
-        routeSummary.setText("กำลังคำนวณเส้นทาง…");
+        routeSummary.setText(tr("กำลังคำนวณเส้นทาง…","Calculating route…"));
         try {
             RouteSearch.FromAndTo fromAndTo = new RouteSearch.FromAndTo(
                     toPoint(myLocation), toPoint(destination));
@@ -663,7 +663,7 @@ public final class MainActivity extends Activity implements
                 routeSearch.calculateDriveRouteAsyn(query);
             }
         } catch (Exception e) {
-            routeSummary.setText("คำนวณไม่ได้: " + e.getMessage());
+            routeSummary.setText(tr("คำนวณไม่ได้: ","Routing failed: ")+e.getMessage());
         }
     }
 
@@ -744,7 +744,7 @@ public final class MainActivity extends Activity implements
     private void drawRoute(List<LatLng> points, float distanceMeters, long seconds, String mode) {
         clearRouteLine();
         if (points.size() < 2) {
-            routeSummary.setText("ไม่พบข้อมูลแนวเส้นทาง");
+            routeSummary.setText(tr("ไม่มีข้อมูลแนวเส้นทาง","No route geometry"));
             return;
         }
         routeLine = map.addPolyline(new PolylineOptions().addAll(points)
@@ -767,12 +767,12 @@ public final class MainActivity extends Activity implements
         routeSummary.setText(mode + "  •  " + km + "  •  " + time);
         ((Button)findViewById(R.id.routeButton)).setText(R.string.change_route);
         TripStore.setRoute(this, points, distanceMeters, seconds, mode);
-        status("แสดงเส้นทางไปยัง " + destinationName + " แล้ว");
+        status(tr("ดูเส้นทางไป ","Route preview to ")+destinationName);
     }
 
     private void routeFailed(int code) {
-        routeSummary.setText("ไม่พบเส้นทาง (รหัส " + code + ") • ตรวจสอบพื้นที่บริการของ AMAP");
-        status("AMAP อาจยังไม่มีข้อมูลเส้นทางสำหรับจุดนี้");
+        routeSummary.setText(tr("ไม่พบเส้นทาง (","No route (")+code+tr(") • ตรวจสอบพื้นที่บริการ",") · Check coverage"));
+        status(tr("อาจไม่มีข้อมูลเส้นทางในพื้นที่นี้","Route data may be unavailable here"));
     }
 
     private void appendPolyline(List<LatLng> output, List<LatLonPoint> path) {
@@ -811,6 +811,8 @@ public final class MainActivity extends Activity implements
         status(NaviLocale.text(this,"แตะเพื่อค้นหาจุดหมาย","Tap search to find a destination"));
     }
 
+
+    private String tr(String th,String en) {return NaviLocale.text(this,th,en);}
 
     private SharedPreferences getViewPrefs() {
         return getSharedPreferences("navith_view", MODE_PRIVATE);
@@ -1009,16 +1011,17 @@ public final class MainActivity extends Activity implements
 
     private void chooseRouteOptions() {
         SharedPreferences p = getViewPrefs();
-        String[] choices = {"หลีกเลี่ยงค่าผ่านทาง", "หลีกเลี่ยงทางด่วน/มอเตอร์เวย์",
-                "หลีกเลี่ยงรถติด (เมื่อมีข้อมูล)"};
+        String[] choices={tr("เลี่ยงค่าผ่านทาง","Avoid tolls"),
+            tr("เลี่ยงทางด่วน/มอเตอร์เวย์","Avoid highways"),
+            tr("เลี่ยงรถติดเมื่อมีข้อมูล","Avoid congestion when available")};
         String[] keys = {"avoid_tolls","avoid_highway","avoid_traffic"};
         boolean[] checked = {p.getBoolean(keys[0],false),p.getBoolean(keys[1],false),
                 p.getBoolean(keys[2],true)};
-        new AlertDialog.Builder(this).setTitle("รูปแบบการคำนวณเส้นทาง")
+        new AlertDialog.Builder(this).setTitle(tr("ตัวเลือกเส้นทาง","Route preferences"))
             .setMultiChoiceItems(choices, checked, (dialog,index,on) -> {
                 p.edit().putBoolean(keys[index], on).apply();
             }).setPositiveButton("บันทึก", (d,w)->{
-                status("อัปเดตเงื่อนไขเส้นทางแล้ว • กดแสดงเส้นทางอีกครั้ง");
+                status(tr("ตั้งค่าเส้นทางแล้ว • ดูเส้นทางอีกครั้ง","Route options saved · Recalculate to apply"));
             }).show();
     }
 
