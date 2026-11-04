@@ -1,6 +1,7 @@
 package com.navith.amap.car;
 
 import android.content.Context;
+import android.location.Location;
 import android.content.SharedPreferences;
 
 import com.amap.api.maps.model.LatLng;
@@ -38,6 +39,30 @@ public final class TripStore {
         if (l != null) prefs(c).edit().putString("lat",Double.toString(l.latitude))
                 .putString("lon",Double.toString(l.longitude)).putLong("location_time",System.currentTimeMillis()).apply();
     }
+    public static void setLocation(Context c, Location fix) {
+        if(fix==null || !Double.isFinite(fix.getLatitude()) ||
+           !Double.isFinite(fix.getLongitude()) ||
+           Math.abs(fix.getLatitude())>90 || Math.abs(fix.getLongitude())>180)return;
+        SharedPreferences.Editor e=prefs(c).edit()
+            .putString("lat",Double.toString(fix.getLatitude()))
+            .putString("lon",Double.toString(fix.getLongitude()))
+            .putLong("location_time",System.currentTimeMillis());
+        // Only use a bearing if Android supplied a moving GPS fix.
+        if(fix.hasBearing() && fix.hasSpeed() && fix.getSpeed()>2.5f &&
+                Float.isFinite(fix.getBearing())) {
+            e.putFloat("heading_degrees",fix.getBearing())
+             .putLong("heading_time",System.currentTimeMillis());
+        }
+        e.apply();
+    }
+    /** -1 indicates no fresh, moving-device heading. */
+    public static float heading(Context c) {
+        SharedPreferences p=prefs(c);
+        long age=System.currentTimeMillis()-p.getLong("heading_time",0);
+        if(age<0 || age>10000)return -1f;
+        return p.getFloat("heading_degrees",-1f);
+    }
+
     public static boolean hasRecentLocation(Context c) {
         return location(c) != null && System.currentTimeMillis()-prefs(c).getLong("location_time",0L) < 120_000;
     }
