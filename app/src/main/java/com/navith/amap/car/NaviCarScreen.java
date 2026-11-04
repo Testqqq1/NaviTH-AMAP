@@ -5,6 +5,7 @@ import android.app.Presentation;
 import android.content.Context;
 import android.content.res.Configuration;
 import com.amap.api.maps.model.CameraPosition;
+import com.navith.amap.NaviLocale;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Rect;
@@ -138,17 +139,21 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         }
         String dest=TripStore.destinationName(getCarContext());
         String summary=TripStore.summary(getCarContext());
-        String message = dest.isEmpty() ? "ค้นหาสถานที่จากปุ่มด้านบน หรือเลือกปลายทางจากมือถือ" :
-                (routing ? "กำลังคำนวณเส้นทาง..." : (summary.isEmpty()?"เลือก: "+dest+" · รอผลการคำนวณเส้นทาง":"ไป "+dest+" · "+summary));
-        Action search=new Action.Builder().setTitle("ค้นหา").setOnClickListener(() ->
+        String message = dest.isEmpty() ? tr("ค้นหาสถานที่จากปุ่มด้านบน หรือเลือกปลายทางจากมือถือ",
+                       "Search or select a destination from the phone") :
+                (routing ? tr("กำลังคำนวณเส้นทาง...","Calculating route…") :
+                   (summary.isEmpty()?tr("เลือก: ","Selected: ")+dest+
+                      tr(" · รอผลการคำนวณเส้นทาง"," · Waiting for route")
+                      :tr("ไป ","To ")+dest+" · "+summary));
+        Action search=new Action.Builder().setTitle(tr("ค้นหา","Search")).setOnClickListener(() ->
                 getScreenManager().push(new NaviSearchScreen(getCarContext(),this))).build();
         ActionStrip.Builder actionBar=new ActionStrip.Builder().addAction(search);
         if (!dest.isEmpty()) {
-            actionBar.addAction(new Action.Builder().setTitle("ล้างเส้นทาง")
+            actionBar.addAction(new Action.Builder().setTitle(tr("ล้างเส้นทาง","Clear route"))
                     .setOnClickListener(() -> TripStore.clearDestination(getCarContext())).build());
         }
         if (getCarContext().getCarAppApiLevel()>=7) {
-            Pane pane=new Pane.Builder().addRow(new Row.Builder().setTitle("NaviTH · แผนที่และตัวอย่างเส้นทาง")
+            Pane pane=new Pane.Builder().addRow(new Row.Builder().setTitle(tr("NaviTH · แผนที่และตัวอย่างเส้นทาง","NaviTH · Map and route preview"))
                     .addText(message).build()).build();
             PaneTemplate content=new PaneTemplate.Builder(pane).setTitle("NaviTH Maps").build();
             return new MapWithContentTemplate.Builder().setContentTemplate(content)
@@ -156,7 +161,7 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         }
         // Older Android Auto hosts: navigation map surface + clear preview information.
         return new NavigationTemplate.Builder().setActionStrip(actionBar.build())
-                .setNavigationInfo(new MessageInfo.Builder("NaviTH · ตัวอย่างเส้นทาง").setText(message).build())
+                .setNavigationInfo(new MessageInfo.Builder(tr("NaviTH · ตัวอย่างเส้นทาง","NaviTH · Route preview")).setText(message).build())
                 .build();
     }
 
@@ -214,7 +219,7 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
             MapsInitializer.updatePrivacyShow(getCarContext(),true,true);
             MapsInitializer.updatePrivacyAgree(getCarContext(),true);
             MapsInitializer.updateCountryCode("TH");
-            MapsInitializer.initRegionLanguageType(7);
+            MapsInitializer.initRegionLanguageType(NaviLocale.thai(getCarContext()) ? 7 : 2);
             DisplayManager manager=(DisplayManager)getCarContext().getSystemService(Context.DISPLAY_SERVICE);
             virtualDisplay=manager.createVirtualDisplay("NaviTH-AMAP-AA",surface.getWidth(),
                     surface.getHeight(),surface.getDpi(),surface.getSurface(),
@@ -236,6 +241,8 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
             releasePresentation();
         }
     }
+
+    private String tr(String th,String en) {return NaviLocale.text(getCarContext(),th,en);}
 
     private int routeStrategy() {
         boolean toll=viewPrefs.getBoolean("avoid_tolls",false);
@@ -260,7 +267,8 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         map.setMapType(type);
         map.setTrafficEnabled(viewPrefs.getBoolean("traffic",true));
         boolean third=viewPrefs.getBoolean("view3d",true);
-        map.showBuildings(third);
+        map.showBuildings(third && viewPrefs.getBoolean("buildings",true));
+        map.showMapText(viewPrefs.getBoolean("labels",false));
         map.moveCamera(CameraUpdateFactory.newCameraPosition(
                 new CameraPosition.Builder(map.getCameraPosition()).tilt(third ? 55f : 0f).build()));
     }
