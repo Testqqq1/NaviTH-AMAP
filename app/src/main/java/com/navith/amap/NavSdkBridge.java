@@ -4,6 +4,8 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
 import android.content.pm.PackageManager;
 
 import com.amap.api.maps.model.LatLng;
@@ -79,6 +81,39 @@ public final class NavSdkBridge {
                 .setNegativeButton("ยกเลิก", null)
                 .show();
         } else tryStart(activity, destination, name, poiId);
+    }
+
+    /**
+     * A usable fallback for maps-only builds (and walking routes). It never
+     * pretends that NaviTH has started its own turn-by-turn engine.
+     */
+    public static void openExternalRoute(Activity activity, LatLng destination, boolean walk) {
+        if(destination==null || activity.isFinishing() || activity.isDestroyed())return;
+        String coords=destination.latitude+","+destination.longitude;
+        String mode=walk?"w":"d";
+        Intent google=new Intent(Intent.ACTION_VIEW,
+            Uri.parse("google.navigation:q="+coords+"&mode="+mode));
+        google.setPackage("com.google.android.apps.maps");
+        try {
+            // Launch directly: resolveActivity can falsely report no handler on
+            // Android 11+ when package visibility is restricted.
+            activity.startActivity(google);
+            return;
+        } catch(android.content.ActivityNotFoundException mapsMissing) {
+            Log.i("NaviTH/Navigation","Google Maps absent; using web directions");
+        } catch(Exception launchFailure) {
+            Log.w("NaviTH/Navigation","Google Maps could not open",launchFailure);
+        }
+        try {
+            // A browser can still show directions when Google Maps is absent.
+            Uri web=Uri.parse("https://www.google.com/maps/dir/?api=1&destination="+
+                Uri.encode(coords)+"&travelmode="+(walk?"walking":"driving"));
+            activity.startActivity(new Intent(Intent.ACTION_VIEW,web));
+        } catch(Exception unavailable) {
+            Log.w("NaviTH/Navigation","No external navigation handler",unavailable);
+            show(activity,"ไม่มีแอปนำทางที่เปิดได้",
+                "กรุณาติดตั้ง Google Maps หรือเบราว์เซอร์ที่รองรับลิงก์นำทาง");
+        }
     }
 
     private static void show(Activity activity, String title, String message) {
@@ -316,10 +351,13 @@ public final class NavSdkBridge {
                 .invoke(singleton, activity, config, pageCallback);
         } catch (Throwable failure) {
             NaviGuidanceStore.failed(activity.getApplicationContext(),"เปิด Navigation SDK ไม่สำเร็จ");
-            android.util.Log.e("NaviTH/Navigation", "Navigation start failed", failure);
-            show(activity, "ยังเริ่มการนำทางไม่ได้",
-                "ตรวจสิทธิ์ AMAP Navigation ของ API Key, SHA-1, ความพร้อมของพื้นที่และบริการ SDK " +
-                "หากยังใช้ไม่ได้ ให้กลับไปใช้ตัวอย่างเส้นทางบน NaviTH Maps");
+            android.util.Log.e("NaviTH/Navigation","Navigation start failed",failure);
+            if(activity.isFinishing() || activity.isDestroyed())return;
+            new AlertDialog.Builder(activity)
+                .setTitle("ยังเริ่ม AMAP Navigation ไม่ได้")
+                .setMessage("ตรวจ API Key, SHA-1 และพื้นที่ให้บริการของ AMAP Navigation SDK หรือเลือกนำทางด้วย Google Maps")
+                .setPositiveButton("นำทางด้วย Google Maps",(d,w)->openExternalRoute(activity,destination,false))
+                .setNegativeButton("ปิด",null).show();
         }
     }
 }
