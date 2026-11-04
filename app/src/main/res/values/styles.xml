@@ -1,9 +1,9 @@
 <resources>
     <style name="Theme.NaviTH" parent="android:style/Theme.Material.Light.NoActionBar">
-        <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#087F76</item>
-        <item name="android:statusBarColor">#F9FAFC</item>
-        <item name="android:navigationBarColor">#F9FAFC</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:colorAccent">@color/nav_primary</item>
+        <item name="android:statusBarColor">@color/nav_surface</item>
+        <item name="android:navigationBarColor">@color/nav_surface</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
         <item name="android:windowActionModeOverlay">true</item>

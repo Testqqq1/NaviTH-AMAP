@@ -51,4 +51,5 @@
     <string name="start_navigation_test">เริ่มนำทาง (ทดลอง)</string>
     <string name="route_ready">เส้นทางพร้อมแล้ว</string>
     <string name="settings_advanced">ขั้นสูงและนักพัฒนา</string>
+    <string name="route_preferences">ตัวเลือกเส้นทาง  ›</string>
 </resources>

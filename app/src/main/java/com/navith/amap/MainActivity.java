@@ -307,6 +307,15 @@ public final class MainActivity extends Activity implements
         findViewById(R.id.clearButton).setOnClickListener(v -> clearDestination());
         findViewById(R.id.routeSheetHeader).setOnClickListener(v -> toggleRouteExpanded());
         findViewById(R.id.sheetGrabber).setOnClickListener(v -> toggleRouteExpanded());
+        enableSheetSwipe(findViewById(R.id.homeGrabber),
+            ()->{if(!homeOpen)toggleHomeExpanded();},
+            ()->{if(homeOpen)toggleHomeExpanded();});
+        enableSheetSwipe(findViewById(R.id.sheetGrabber),
+            ()->{if(!routeOpen)toggleRouteExpanded();},
+            ()->{if(routeOpen)toggleRouteExpanded();});
+        enableSheetSwipe(findViewById(R.id.routeSheetHeader),
+            ()->{if(!routeOpen)toggleRouteExpanded();},
+            ()->{if(routeOpen)toggleRouteExpanded();});
         findViewById(R.id.routeOptionsButton).setOnClickListener(v -> chooseRouteOptions());
         findViewById(R.id.favoriteButton).setOnClickListener(v -> toggleFavorite());
         findViewById(R.id.saveHomeButton).setOnClickListener(v -> saveShortcut("home"));
@@ -1228,6 +1237,7 @@ public final class MainActivity extends Activity implements
                     openSearch();
                     searchInput.setText(words.get(0));
                     searchInput.setSelection(searchInput.length());
+                    if(pendingSearch!=null)searchHandler.removeCallbacks(pendingSearch);
                     searchPlaces();
                 }
             }
@@ -1357,6 +1367,27 @@ public final class MainActivity extends Activity implements
                 searchMapMarkers.add(marker);
             }
         }catch(Exception e){clearSearchMarkers();}
+    }
+
+    /** Swipe or tap the grabber; gesture targets remain at least 48dp high. */
+    private void enableSheetSwipe(View view,Runnable expand,Runnable collapse) {
+        final float[] downY=new float[1];
+        view.setOnTouchListener((target,event)->{
+            switch(event.getActionMasked()){
+                case MotionEvent.ACTION_DOWN:
+                    downY[0]=event.getRawY();
+                    return true;
+                case MotionEvent.ACTION_UP:
+                    float delta=event.getRawY()-downY[0];
+                    if(Math.abs(delta)>dp(36)) {
+                        if(delta<0)expand.run();else collapse.run();
+                    } else target.performClick();
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    return true;
+                default: return true;
+            }
+        });
     }
 
     private void toggleHomeExpanded() {
@@ -1652,6 +1683,8 @@ public final class MainActivity extends Activity implements
             statusText.setVisibility(View.GONE);return;
         }
         statusText.setText(text);
+        statusText.setTranslationY(homePanel!=null &&
+            homePanel.getVisibility()==View.VISIBLE ? -dp(homeOpen?290:160):0);
         statusText.setVisibility(View.VISIBLE);
         dismissStatus=()->statusText.setVisibility(View.GONE);
         uiHandler.postDelayed(dismissStatus,3200L);

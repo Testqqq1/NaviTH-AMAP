@@ -51,4 +51,6 @@
     <string name="start_navigation_test">Start navigation (test)</string>
     <string name="route_ready">Route ready</string>
     <string name="settings_advanced">Advanced and developer</string>
+    <string name="route_preferences">ตัวเลือกเส้นทาง  ›</string>
+    <string name="route_preferences">Route preferences  ›</string>
 </resources>
