@@ -161,9 +161,22 @@ public final class SettingsActivity extends Activity {
         row.setBackground(surface(getColor(R.color.nav_card),20));
         LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);
         params.bottomMargin=dp(10);content.addView(row,params);
-        TextView symbolView=label(symbol,25,accent,true);
-        symbolView.setGravity(Gravity.CENTER);
+        int iconRes;
+        switch(key){
+            case "general":iconRes=R.drawable.nav_min_settings;break;
+            case "visual":iconRes=R.drawable.nav_min_layers;break;
+            case "map":iconRes=R.drawable.nav_min_explore;break;
+            case "navigation":iconRes=R.drawable.nav_min_route;break;
+            case "navextra":iconRes=R.drawable.nav_min_route;break;
+            case "offline":iconRes=R.drawable.nav_min_layers;break;
+            case "privacy":iconRes=R.drawable.nav_min_profile;break;
+            default:iconRes=R.drawable.nav_min_settings;break;
+        }
+        ImageView symbolView=new ImageView(this);
+        symbolView.setImageResource(iconRes);
+        symbolView.setPadding(dp(13),dp(13),dp(13),dp(13));
         symbolView.setBackground(surface(getColor(R.color.nav_soft_accent),14));
+        symbolView.setContentDescription(null);
         row.addView(symbolView,new LinearLayout.LayoutParams(dp(52),dp(52)));
         LinearLayout labels=new LinearLayout(this);labels.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams labelParams=new LinearLayout.LayoutParams(0,-2,1f);
