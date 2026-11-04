@@ -44,7 +44,12 @@ public final class NavSdkBridge {
     }
 
     public static void openRoute(Activity activity, LatLng destination, String name) {
-        if (destination == null) return;
+        openRoute(activity,destination,name,null);
+    }
+    public static void openRoute(Activity activity, LatLng destination, String name, String poiId) {
+        if (destination == null || !Double.isFinite(destination.latitude) ||
+            !Double.isFinite(destination.longitude) ||
+            Math.abs(destination.latitude)>90 || Math.abs(destination.longitude)>180)return;
         if (!isInstalled()) {
             show(activity,
                 "Navigation SDK ยังไม่รวมอยู่ใน APK นี้",
@@ -69,11 +74,11 @@ public final class NavSdkBridge {
                 .setPositiveButton("ยินยอมและเปิดหน้านำทาง", (d, w) -> {
                     activity.getSharedPreferences(CONSENT, Context.MODE_PRIVATE).edit()
                         .putBoolean("accepted", true).apply();
-                    tryStart(activity, destination, name);
+                    tryStart(activity, destination, name, poiId);
                 })
                 .setNegativeButton("ยกเลิก", null)
                 .show();
-        } else tryStart(activity, destination, name);
+        } else tryStart(activity, destination, name, poiId);
     }
 
     private static void show(Activity activity, String title, String message) {
@@ -199,7 +204,7 @@ public final class NavSdkBridge {
         }
     }
 
-    private static void tryStart(Activity activity, LatLng destination, String name) {
+    private static void tryStart(Activity activity, LatLng destination, String name, String poiId) {
         try {
             // Privacy calls must precede creating a Navigation SDK singleton/page.
             // NaviSetting is the documented AMAP Navigation 8.1+ API holder.
@@ -223,7 +228,7 @@ public final class NavSdkBridge {
                 String.class, LatLng.class, String.class);
             Object target = poiConstructor.newInstance(
                 (name == null || name.trim().isEmpty()) ? "จุดหมายปลายทาง" : name,
-                destination, null);
+                destination, poiId==null || poiId.trim().isEmpty() ? null : poiId.trim());
 
             Class<?> navType = Class.forName("com.amap.api.navi.AmapNaviType");
             Object driving = navType.getField("DRIVER").get(null);
