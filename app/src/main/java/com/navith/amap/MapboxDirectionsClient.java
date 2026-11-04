@@ -86,6 +86,7 @@ public final class MapboxDirectionsClient {
             MAIN.post(()->callback.failure("Invalid route coordinates"));
             return;
         }
+        NavigationDiagnostics.routeStart(context);
         new Thread(()->{
             HttpURLConnection conn=null;
             try {
@@ -161,8 +162,10 @@ public final class MapboxDirectionsClient {
                         Math.max(0L,Math.round(candidate.getDouble("duration")))));
                 }
                 if(parsed.isEmpty())throw new IOException("Mapbox returned no usable geometry");
+                NavigationDiagnostics.routeResult(context,true);
                 MAIN.post(()->callback.success(parsed));
             }catch(Exception e){
+                NavigationDiagnostics.routeResult(context,false);
                 String message=e.getMessage()==null?"Mapbox request failed":e.getMessage();
                 MAIN.post(()->callback.failure(message));
             }finally{if(conn!=null)conn.disconnect();}
