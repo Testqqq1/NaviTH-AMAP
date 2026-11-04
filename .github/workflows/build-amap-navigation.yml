@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/build-amap-navigation.yml'
       - 'app/src/main/java/com/navith/amap/NavSdkBridge.java'
+      - 'app/src/main/java/com/navith/amap/NavigationMarkerFactory.java'
       - 'app/src/main/java/com/navith/amap/MainActivity.java'
       - 'app/src/main/res/layout/activity_main.xml'
       - 'app/src/main/AndroidManifest.xml'
@@ -26,7 +27,7 @@ permissions:
 jobs:
   android-navigation:
     runs-on: ubuntu-24.04
-    timeout-minutes: 18
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,21 +55,58 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Restore verified official AMAP SDK cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/amap-navigation.zip
+          key: amap-global-nav-11.2.1001-dedd330f7f3d916f2a9e95ad5b3cda4c
+
       - name: Download and verify OFFICIAL combined AMAP Navigation SDK
         shell: bash
         run: |
           set -euo pipefail
           url='https://a.amap.com/lbs/static/opnavi_resources/AMap3DMap_AMapNavi_AMapSearch_AMapLocation.zip'
-          curl --fail --location --show-error --silent --retry 2 --retry-delay 3 --max-time 240 "$url" -o "$RUNNER_TEMP/amap-navigation.zip"
-          echo 'dedd330f7f3d916f2a9e95ad5b3cda4c' > "$RUNNER_TEMP/vendor-md5.txt"
-          actual="$(md5sum "$RUNNER_TEMP/amap-navigation.zip" | cut -d ' ' -f1)"
-          expected="$(cat "$RUNNER_TEMP/vendor-md5.txt")"
-          echo "AMAP SDK MD5: $actual"
+          archive="$RUNNER_TEMP/amap-navigation.zip"
+          expected='dedd330f7f3d916f2a9e95ad5b3cda4c'
+          actual=""
+          if [[ -f "$archive" ]]; then
+            actual="$(md5sum "$archive" | cut -d ' ' -f1)"
+          fi
           if [[ "$actual" != "$expected" ]]; then
-            echo "::error::Vendor archive does not match published AMAP Global Navigation 11.2.1001 MD5. Aborting."
+            # AMap's ~93 MB vendor CDN is frequently slower than 240s on
+            # GitHub-hosted runners. Preserve partial bytes for HTTP resume
+            # instead of restarting from zero on every curl timeout.
+            rm -f "$archive"
+            downloaded=0
+            for attempt in 1 2 3 4 5; do
+              echo "Official AMAP SDK fetch attempt $attempt; resume at $(stat -c%s "$archive" 2>/dev/null || echo 0) bytes"
+              set +e
+              curl -fLsS --connect-timeout 40 --max-time 360 \
+                --retry 0 --continue-at - "$url" -o "$archive"
+              result=$?
+              set -e
+              if [[ "$result" -eq 0 ]]; then downloaded=1;break;fi
+              if [[ "$result" -eq 33 ]]; then
+                # Server ignored Range: one longer uninterrupted transfer.
+                rm -f "$archive"
+                curl -fLsS --connect-timeout 40 --max-time 1200 "$url" -o "$archive"
+                downloaded=1
+                break
+              fi
+              sleep 4
+            done
+            if [[ "$downloaded" -ne 1 ]]; then
+              echo "::error::Could not download official AMAP Navigation SDK (vendor CDN slow/unavailable)"
+              exit 1
+            fi
+          fi
+          actual="$(md5sum "$archive" | cut -d ' ' -f1)"
+          echo "Official AMAP SDK archive MD5: $actual"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::Vendor archive checksum differs from official 11.2.1001 MD5; refusing unsafe SDK"
             exit 1
           fi
-          unzip -tq "$RUNNER_TEMP/amap-navigation.zip"
+          unzip -tq "$archive"
 
       - name: Replace Map-only SDK with combined Map+Navigation+Search+Location
         shell: bash
