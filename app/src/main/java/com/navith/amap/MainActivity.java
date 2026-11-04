@@ -323,7 +323,18 @@ public final class MainActivity extends Activity implements
         View startNavigation=findViewById(R.id.startNavigationButton);
         startNavigation.setVisibility(View.GONE); // Only after a real route preview has been computed.
         startNavigation.setOnClickListener(v -> {
-            if(destination!=null)NavSdkBridge.openRoute(this,destination,destinationName);
+            if(destination==null) {
+                status(tr("เลือกจุดหมายก่อน","Choose a destination first")); return;
+            }
+            if(!hasRoutePreview) { calculateRoute(); return; }
+            boolean walking=modeGroup.getCheckedRadioButtonId()==R.id.modeWalk;
+            if(!walking && NavSdkBridge.isInstalled()) {
+                NavSdkBridge.openRoute(this,destination,destinationName);
+            } else {
+                // The Maps-only APK must offer a working, explicitly external
+                // navigation action rather than silently hiding the button.
+                NavSdkBridge.openExternalRoute(this,destination,walking);
+            }
         });
         findViewById(R.id.addressLookupButton).setOnClickListener(v -> {
             if(destination!=null)reverseSelectedAddress(destination);
@@ -359,6 +370,10 @@ public final class MainActivity extends Activity implements
             reverseSelectedAddress(latLng);
         });
         map.setOnMarkerClickListener(marker -> {
+            if (myMarker!=null && marker.equals(myMarker)) {
+                chooseVehicleIcon();
+                return true;
+            }
             if (marker.equals(destinationMarker)) {
                 routePanel.setVisibility(View.VISIBLE);
                 marker.showInfoWindow();
@@ -521,8 +536,12 @@ public final class MainActivity extends Activity implements
     private void updatePositionMarker(Location fix) {
         if (map == null || myLocation == null) return;
         if (myMarker == null) {
-            myMarker = map.addMarker(new MarkerOptions().position(myLocation)
-                    .title("ตำแหน่งปัจจุบัน").icon(currentMarkerIcon()));
+            MarkerOptions positionOptions=new MarkerOptions()
+                    .position(myLocation).title(tr("ตำแหน่งของฉัน","My location"))
+                    .icon(currentMarkerIcon()).anchor(0.5f,0.5f);
+            // Flat markers inherit the map camera's tilt and rotation.
+            positionOptions.setFlat(true);
+            myMarker = map.addMarker(positionOptions);
         } else {
             myMarker.setPosition(myLocation);
         }
@@ -1002,17 +1021,23 @@ public final class MainActivity extends Activity implements
             ? new Locale("th","TH"):Locale.ENGLISH)
             .format(new Date(System.currentTimeMillis()+Math.max(0L,seconds)*1000L));
         TextView etaText=findViewById(R.id.etaText);
+        boolean walking=modeGroup.getCheckedRadioButtonId()==R.id.modeWalk;
+        boolean nativeNavigation=!walking && NavSdkBridge.isInstalled();
         if(etaText!=null)etaText.setText(NaviLocale.text(this,"คาดว่าจะถึงประมาณ ","Estimated arrival ")+eta
-            +NaviLocale.text(this," • ตัวอย่างเส้นทาง ยังไม่มีเสียงนำทาง"," • Route preview, no turn-by-turn guidance"));
+            +(nativeNavigation
+                ? tr(" • พร้อมเปิด AMAP Navigation รุ่นทดลอง"," • AMAP Navigation test available")
+                : tr(" • ดูเส้นทางในแอปนี้ นำทางด้วย Google Maps"," • Preview here, navigate with Google Maps")));
         routeSummary.setText(mode + "  •  " + km + "  •  " + time);
         ((Button)findViewById(R.id.routeButton)).setText(R.string.change_route);
         hasRoutePreview=true;
-        boolean canStart=NavSdkBridge.isInstalled() &&
-            modeGroup.getCheckedRadioButtonId()!=R.id.modeWalk;
-        findViewById(R.id.startNavigationButton).setVisibility(canStart?View.VISIBLE:View.GONE);
+        Button startAction=findViewById(R.id.startNavigationButton);
+        startAction.setVisibility(View.VISIBLE);
+        startAction.setText(nativeNavigation ? R.string.start_navigation_test
+            : walking ? R.string.open_walking_navigation : R.string.open_external_navigation);
+        startAction.setContentDescription(startAction.getText());
         Button routeAction=findViewById(R.id.routeButton);
-        routeAction.setBackgroundResource(canStart?R.drawable.nav_bg_subtle:R.drawable.nav_bg_button);
-        routeAction.setTextColor(canStart?getColor(R.color.nav_primary):Color.WHITE);
+        routeAction.setBackgroundResource(R.drawable.nav_bg_subtle);
+        routeAction.setTextColor(getColor(R.color.nav_primary));
         TripStore.setRoute(this, points, distanceMeters, seconds, mode);
         status(tr("ดูเส้นทางไป ","Route preview to ")+destinationName);
     }
@@ -1117,29 +1142,10 @@ public final class MainActivity extends Activity implements
     }
 
     private BitmapDescriptor currentMarkerIcon() {
-        int kind = getViewPrefs().getInt("vehicle_icon", 6);
-        if (kind == 7) {
-            File file = new File(getFilesDir(), "navith_marker.png");
-            if (file.exists()) {
-                Bitmap b = BitmapFactory.decodeFile(file.getAbsolutePath());
-                if (b != null) return BitmapDescriptorFactory.fromBitmap(b);
-            }
-        }
-        String[] icons = {"🚗", "🚙", "🚐", "🚙", "🛻", "🏎", "➤"};
-        String glyph = icons[Math.max(0, Math.min(6, kind))];
-        TextView iconView = new TextView(this);
-        iconView.setText(glyph);
-        iconView.setTextSize(18f);
-        iconView.setTextColor(Color.rgb(8,127,118));
-        iconView.setTypeface(null, Typeface.BOLD);
-        iconView.setGravity(Gravity.CENTER);
-        iconView.setPadding(dp(3), dp(3), dp(3), dp(3));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.WHITE);
-        bg.setCornerRadius(dp(16));
-        bg.setStroke(dp(1), Color.rgb(8,127,118));
-        iconView.setBackground(bg);
-        return BitmapDescriptorFactory.fromView(iconView);
+        int kind=getViewPrefs().getInt("vehicle_icon",6);
+        return BitmapDescriptorFactory.fromBitmap(VehicleMarkerFactory.create(
+            this,kind,kind==VehicleMarkerFactory.CUSTOM
+                ? VehicleMarkerFactory.loadCustom(this):null));
     }
 
     private void chooseMapTheme() {
@@ -1211,21 +1217,14 @@ public final class MainActivity extends Activity implements
     }
 
     private void chooseVehicleIcon() {
-        String[] types = {"รถเก๋ง 🚗", "แฮทช์แบ็ค 🚙", "รถตู้ 🚐", "SUV 🚙",
-                "รถกระบะ 🛻", "รถสปอร์ต 🏎", "ลูกศร ➤", "เลือกรูปของคุณเอง..."};
-        new AlertDialog.Builder(this).setTitle("ไอคอนตำแหน่งบนแผนที่ (2D)")
-            .setSingleChoiceItems(types, getViewPrefs().getInt("vehicle_icon", 6), (d,index)->{
-                d.dismiss();
-                if (index == 7) {
-                    Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                    pick.setType("image/*");
-                    pick.addCategory(Intent.CATEGORY_OPENABLE);
-                    startActivityForResult(pick, PICK_MARKER_IMAGE);
-                } else {
-                    getViewPrefs().edit().putInt("vehicle_icon", index).apply();
-                    if (myMarker != null) myMarker.setIcon(currentMarkerIcon());
-                }
-            }).setNegativeButton("ปิด", null).show();
+        VehicleMarkerFactory.showPicker(this,getViewPrefs(),()->{
+            if(myMarker!=null)myMarker.setIcon(currentMarkerIcon());
+        },()->{
+            Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            pick.setType("image/*");
+            pick.addCategory(Intent.CATEGORY_OPENABLE);
+            startActivityForResult(pick,PICK_MARKER_IMAGE);
+        });
     }
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
