@@ -30,6 +30,7 @@
                 <category android:name="androidx.car.app.category.NAVIGATION" />
             </intent-filter>
         </service>
+        <activity android:name=".OfflineMapsActivity" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity
             android:name=".MainActivity"
