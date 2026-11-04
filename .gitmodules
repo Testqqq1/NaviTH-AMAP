@@ -47,3 +47,8 @@
 	path = third_party/flutter/flutter_amap
 	url = https://github.com/best-flutter/flutter_amap.git
 	branch = master
+
+[submodule "third_party/mcp/amap-maps-mcp-server"]
+	path = third_party/mcp/amap-maps-mcp-server
+	url = https://github.com/masx200/amap-maps-mcp-server.git
+	branch = main

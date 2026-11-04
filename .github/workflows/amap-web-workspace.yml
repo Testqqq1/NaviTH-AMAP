@@ -7,6 +7,7 @@ on:
       - '.gitmodules'
       - 'third_party/amap-web/**'
       - 'third_party/flutter/**'
+      - 'third_party/mcp/**'
       - 'tools/install-amap-web.sh'
       - 'tools/install-map-references.sh'
       - '.github/workflows/amap-web-workspace.yml'
@@ -54,13 +55,24 @@ jobs:
           test -f "$folder/README.md"
           echo "best-flutter/flutter_amap $(git -C "$folder" rev-parse HEAD) https://github.com/best-flutter/flutter_amap" | tee -a dist/Reference-commits.txt
           cp third_party/flutter/README.md dist/Flutter-README.md
-      - name: Package 10 source repositories without Git metadata
+      - name: Verify MCP map server reference source (no package install)
+        shell: bash
+        run: |
+          set -euo pipefail
+          folder='third_party/mcp/amap-maps-mcp-server'
+          test -f "$folder/package.json"
+          test -f "$folder/README.md"
+          test -f "$folder/LICENSE"
+          node -e 'const p=require("./third_party/mcp/amap-maps-mcp-server/package.json");if(p.name!=="@masx200/amap-maps-mcp-server")process.exit(1);console.log("Verified:",p.name,p.version)'
+          echo "masx200/amap-maps-mcp-server $(git -C "$folder" rev-parse HEAD) https://github.com/masx200/amap-maps-mcp-server" | tee -a dist/Reference-commits.txt
+          cp third_party/mcp/README.md dist/MCP-README.md
+      - name: Package 11 source repositories without Git metadata
         shell: bash
         run: |
           set -euo pipefail
           cp dist/AMap-Web-commits.txt dist/AMap-Web-source-commits.txt
           cat dist/AMap-Web-commits.txt >> dist/Reference-commits.txt
-          tar --exclude='*/.git' -czf dist/NaviTH-10-reference-repositories.tar.gz third_party/amap-web third_party/flutter
+          tar --exclude='*/.git' -czf dist/NaviTH-11-reference-repositories.tar.gz third_party/amap-web third_party/flutter third_party/mcp
           ls -lh dist/
       - name: Upload source snapshot
         uses: actions/upload-artifact@v4
