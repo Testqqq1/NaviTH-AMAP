@@ -142,6 +142,8 @@ public final class MainActivity extends Activity implements
     private MapboxDirectionsClient.Route selectedMapboxRoute;
     private int mapboxRouteGeneration=0;
     private boolean mapboxGuiding=false;
+    private final NavigationUiState guidanceScene=new NavigationUiState();
+    private long lastGuidanceUiFrame=0L;
     private int mapboxNextStep=1;
     private int lastSpokenStep=-1;
     private int offRouteFixes=0;
@@ -413,6 +415,8 @@ public final class MainActivity extends Activity implements
             } else status(tr("คำนวณเส้นทางก่อนเริ่มนำทาง",
                 "Calculate a route before starting navigation"));
         });
+        findViewById(R.id.activeNavStop).setOnClickListener(v -> stopMapboxGuidance());
+        findViewById(R.id.activeNavRecenter).setOnClickListener(v -> recenter());
         findViewById(R.id.addressLookupButton).setOnClickListener(v -> {
             if(destination!=null)reverseSelectedAddress(destination);
         });
@@ -982,6 +986,7 @@ public final class MainActivity extends Activity implements
         clearSearchMarkers();
         destination = point;
         destinationName = label;
+        guidanceScene.preview();
         waitingReversePoint = null;
         TextView addressLine = findViewById(R.id.addressResult);
         if(addressLine != null) {
@@ -1041,6 +1046,12 @@ public final class MainActivity extends Activity implements
                 "GPS unavailable, inaccurate or stale · acquiring a fresh fix"));
             if (hasLocationPermission()) locateOnce();
             else { locationRequested = false; askForLocation(); }
+            return;
+        }
+        if(modeGroup.getCheckedRadioButtonId()==R.id.modeDrive &&
+            !VehicleCapabilityRegistry.drivingSupported(this)) {
+            routeSummary.setText(VehicleCapabilityRegistry.availability(this));
+            Toast.makeText(this,VehicleCapabilityRegistry.availability(this),Toast.LENGTH_LONG).show();
             return;
         }
         if (MapboxDirectionsClient.configured(this) && !MapboxDirectionsClient.consented(this)) {
@@ -1241,7 +1252,9 @@ public final class MainActivity extends Activity implements
         for (LatLng p : points) bounds.include(p);
         if (myLocation != null) bounds.include(myLocation);
         if (destination != null) bounds.include(destination);
-        map.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds.build(), dp(84)));
+        // Avoid zooming to entire route during active reroute.
+        if(!mapboxGuiding)
+            map.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds.build(), dp(84)));
         String km = String.format(Locale.US,"%.1f",distanceMeters/1000f)
             +NaviLocale.text(this," กม."," km");
         String time = Math.max(1L, Math.round(seconds / 60f))
@@ -1256,7 +1269,9 @@ public final class MainActivity extends Activity implements
         routeSummary.setText(mode + "  •  " + km + "  •  " + time);
         ((Button)findViewById(R.id.routeButton)).setText(R.string.change_route);
         hasRoutePreview=true;
-        boolean canStart=(NavSdkBridge.isInstalled() ||
+        if(!mapboxGuiding)guidanceScene.preview();
+        boolean canStart=VehicleCapabilityRegistry.navigationSupported(this) &&
+            (NavSdkBridge.isInstalled() ||
             (selectedMapboxRoute!=null && selectedMapboxRoute.steps.size()>1 &&
                 MapboxDirectionsClient.configured(this))) &&
             modeGroup.getCheckedRadioButtonId()==R.id.modeDrive;
@@ -1290,6 +1305,7 @@ public final class MainActivity extends Activity implements
 
     private void clearDestination() {
         stopMapboxGuidance();
+        guidanceScene.clear();
         mapboxRouteGeneration++;
         mapboxAlternatives.clear();
         selectedMapboxRoute=null;
@@ -1422,7 +1438,8 @@ public final class MainActivity extends Activity implements
         boolean bottom=getViewPrefs().getBoolean("home_search_bottom",true);
         boolean onHome=destination==null && homePanel!=null &&
             homePanel.getVisibility()==View.VISIBLE;
-        top.setVisibility(onHome && bottom?View.GONE:View.VISIBLE);
+        top.setVisibility(mapboxGuiding?View.GONE:
+            (onHome && bottom?View.GONE:View.VISIBLE));
         homeSearch.setVisibility(bottom?View.VISIBLE:View.GONE);
         boolean landscape=getResources().getConfiguration().orientation==
             Configuration.ORIENTATION_LANDSCAPE;
@@ -2047,6 +2064,41 @@ public final class MainActivity extends Activity implements
      * Navigation SDK (no map matching/lane assistance/background service).
      * Safe for static/simulated tests only until fully validated on the road.
      */
+
+    /** Separate test guidance chrome from Home/RoutePreview. No synthetic SDK state. */
+    private void showActiveNavigation(boolean active) {
+        View top=findViewById(R.id.activeNavTop);
+        View bottom=findViewById(R.id.activeNavBottom);
+        if(top==null || bottom==null || homePanel==null || routePanel==null)return;
+        top.setVisibility(active?View.VISIBLE:View.GONE);
+        bottom.setVisibility(active?View.VISIBLE:View.GONE);
+        homePanel.setVisibility(View.GONE);
+        routePanel.setVisibility(active?View.GONE:
+            (destination==null?View.GONE:View.VISIBLE));
+        if(!active && destination==null)homePanel.setVisibility(View.VISIBLE);
+        View search=findViewById(R.id.topSearchBar);
+        if(search!=null)search.setVisibility(active?View.GONE:View.VISIBLE);
+        if(active) {
+            TextView phase=findViewById(R.id.activeNavPhase);
+            TextView instruction=findViewById(R.id.activeNavInstruction);
+            TextView distance=findViewById(R.id.activeNavDistance);
+            TextView eta=findViewById(R.id.activeNavEta);
+            TextView remaining=findViewById(R.id.activeNavRemaining);
+            if(phase!=null)phase.setText("MAPBOX · GPS TEST");
+            if(instruction!=null)instruction.setText(
+                tr("กำลังรอ GPS และคำสั่งเลี้ยว","Waiting for GPS and maneuvers"));
+            if(distance!=null)distance.setText("--");
+            if(selectedMapboxRoute!=null) {
+                if(eta!=null)eta.setText(tr("เวลาประมาณ ","Approx. ")+
+                    Math.max(1L,Math.round(selectedMapboxRoute.seconds/60f))+
+                    tr(" นาที"," min"));
+                if(remaining!=null)remaining.setText(
+                    String.format(Locale.US,"%.1f",selectedMapboxRoute.meters/1000f)+
+                    tr(" กม."," km"));
+            }
+        } else applyHomeChrome();
+    }
+
     private void startMapboxGuidance() {
         if(selectedMapboxRoute==null || selectedMapboxRoute.steps.size()<2)return;
         new AlertDialog.Builder(this)
@@ -2056,6 +2108,8 @@ public final class MainActivity extends Activity implements
                 "Uses GPS and Mapbox Directions maneuvers. No map matching, background guidance or Android Auto turn-by-turn. Test while parked or with simulated locations, not as your primary driving navigator."))
             .setNegativeButton(tr("ยกเลิก","Cancel"),null)
             .setPositiveButton(tr("เริ่มทดสอบ","Start test"),(d,w)->{
+                try {guidanceScene.startPending();guidanceScene.started();}
+                catch(IllegalStateException stale){guidanceScene.preview();guidanceScene.startPending();guidanceScene.started();}
                 mapboxGuiding=true;
                 mapboxNextStep=1;
                 lastSpokenStep=-1;
@@ -2068,6 +2122,7 @@ public final class MainActivity extends Activity implements
                             mapboxVoice.setLanguage(new Locale("th","TH"));
                     });
                 }
+                showActiveNavigation(true);
                 refreshNavigationAction();
                 routeSummary.setText(tr("กำลังติดตาม GPS · Mapbox (ทดสอบ)",
                     "Following GPS · Mapbox (experimental)"));
@@ -2078,7 +2133,9 @@ public final class MainActivity extends Activity implements
     private void stopMapboxGuidance() {
         if(!mapboxGuiding)return;
         mapboxGuiding=false;
+        guidanceScene.stop();
         reroutingMapbox=false;
+        showActiveNavigation(false);
         if(mapboxVoice!=null)mapboxVoice.stop();
         if(initialized && destination!=null) {
             refreshNavigationAction();
@@ -2142,7 +2199,15 @@ public final class MainActivity extends Activity implements
         float remaining=distanceMetres(current,step.point);
         String instruction=step.instruction.isEmpty()?
             tr("ดำเนินต่อไปตามเส้นทาง","Continue on the route"):step.instruction;
-        routeSummary.setText(instruction+" · "+Math.round(remaining)+" m · Mapbox");
+        long drawNow=SystemClock.elapsedRealtime();
+        if(drawNow-lastGuidanceUiFrame>=500L) {
+            lastGuidanceUiFrame=drawNow;
+            routeSummary.setText(instruction+" · "+Math.round(remaining)+" m · Mapbox");
+            TextView text=findViewById(R.id.activeNavInstruction);
+            TextView distance=findViewById(R.id.activeNavDistance);
+            if(text!=null)text.setText(instruction);
+            if(distance!=null)distance.setText(Math.round(remaining)+tr(" ม."," m"));
+        }
         String voiceStyle=getViewPrefs().getString("voice_style","smart");
         float announceAt="concise".equals(voiceStyle)?80f:
             "detailed".equals(voiceStyle)?250f:150f;
@@ -2152,6 +2217,7 @@ public final class MainActivity extends Activity implements
         }
         if(remaining<=35f) {
             if("arrive".equals(step.type)) {
+                guidanceScene.arrived();
                 speakMapbox(tr("ถึงจุดหมายแล้ว","You have arrived"));
                 stopMapboxGuidance();
                 routeSummary.setText(tr("ถึงจุดหมายแล้ว","You have arrived"));
@@ -2165,6 +2231,10 @@ public final class MainActivity extends Activity implements
     private void rerouteMapbox(LatLng from) {
         if(destination==null || reroutingMapbox)return;
         reroutingMapbox=true;
+        guidanceScene.rerouting();
+        TextView navPhase=findViewById(R.id.activeNavPhase);
+        if(navPhase!=null)navPhase.setText(tr("กำลังคำนวณเส้นทางใหม่… · ทดสอบ",
+            "Rerouting… · Experimental"));
         offRouteFixes=0;
         lastMapboxReroute=SystemClock.elapsedRealtime();
         final int generation=++mapboxRouteGeneration;
@@ -2182,6 +2252,9 @@ public final class MainActivity extends Activity implements
                 mapboxNextStep=1;
                 lastSpokenStep=-1;
                 reroutingMapbox=false;
+                guidanceScene.rerouted();
+                TextView navPhase=findViewById(R.id.activeNavPhase);
+                if(navPhase!=null)navPhase.setText("MAPBOX · GPS TEST");
                 drawRoute(selectedMapboxRoute.geometry,selectedMapboxRoute.meters,
                     selectedMapboxRoute.seconds,tr("รถยนต์ · Mapbox","Driving · Mapbox"));
                 speakMapbox(tr("คำนวณเส้นทางใหม่แล้ว","Route recalculated"));
@@ -2237,7 +2310,8 @@ public final class MainActivity extends Activity implements
         boolean running=NaviGuidanceStore.isNavigating(this) || mapboxGuiding;
         boolean launching="planning".equals(NaviGuidanceStore.phase(this));
         b.setEnabled(!launching);
-        b.setVisibility((NavSdkBridge.isInstalled() ||
+        b.setVisibility(VehicleCapabilityRegistry.navigationSupported(this) &&
+            (NavSdkBridge.isInstalled() ||
             (selectedMapboxRoute!=null && selectedMapboxRoute.steps.size()>1 &&
                 MapboxDirectionsClient.configured(this))) &&
             (running || hasRoutePreview) &&
