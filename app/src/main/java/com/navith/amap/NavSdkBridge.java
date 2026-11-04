@@ -77,6 +77,14 @@ public final class NavSdkBridge {
             .setPositiveButton("ตกลง", null).show();
     }
 
+    private static void setOptionalBoolean(Class<?> type, Object config, String method, boolean value) {
+        try {
+            type.getMethod(method, boolean.class).invoke(config, value);
+        } catch (ReflectiveOperationException ignored) {
+            // Settings vary by Navigation SDK release.
+        }
+    }
+
     private static void tryStart(Activity activity, LatLng destination, String name) {
         try {
             // Privacy calls must precede creating a Navigation SDK singleton/page.
@@ -88,6 +96,11 @@ public final class NavSdkBridge {
                 Context.class, boolean.class);
             show.invoke(null, activity.getApplicationContext(), true, true);
             agree.invoke(null, activity.getApplicationContext(), true);
+            try {
+                privacy.getMethod("updateCountryCode", String.class).invoke(null, "TH");
+            } catch (NoSuchMethodException ignored) {
+                // Older vendor SDK packages do not expose this method.
+            }
 
             // Manifest already carries AMAP_KEY; no hardcoded credential here.
             Class<?> poiType = Class.forName("com.amap.api.maps.model.Poi");
@@ -106,6 +119,13 @@ public final class NavSdkBridge {
                 poiType, List.class, poiType, navType, pageType);
             // No start POI means 'My Location' per vendor Navigation docs.
             Object config = constructor.newInstance(null, null, target, driving, planRoute);
+            // Only SDK-supported settings are enabled, using the vendor's own
+            // navigation component; data availability is determined by AMAP.
+            setOptionalBoolean(params, config, "setUseInnerVoice", true);
+            setOptionalBoolean(params, config, "setTrafficEnabled", true);
+            setOptionalBoolean(params, config, "setShowCrossImage", true);
+            setOptionalBoolean(params, config, "setSecondActionVisible", true);
+            setOptionalBoolean(params, config, "setMultipleRouteNaviMode", true);
 
             Class<?> page = Class.forName("com.amap.api.navi.AmapNaviPage");
             Object singleton = page.getMethod("getInstance").invoke(null);
