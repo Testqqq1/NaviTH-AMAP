@@ -117,9 +117,9 @@
                 android:text="ค้นหาสถานที่ ถนน และที่อยู่..."
                 android:textSize="16sp" android:singleLine="true" android:ellipsize="end"
                 android:textColor="@color/nav_text"/>
-            <TextView android:layout_width="44dp" android:layout_height="48dp"
-                android:gravity="center" android:text="⌕" android:textSize="25sp"
-                android:textColor="@color/nav_secondary"/>
+            <ImageView android:layout_width="44dp" android:layout_height="48dp"
+                android:padding="12dp" android:src="@drawable/nav_min_search"
+                android:scaleType="fitCenter" android:contentDescription="@null"/>
         </LinearLayout>
         <HorizontalScrollView android:id="@+id/homeTravelModes"
             android:layout_width="match_parent"
@@ -305,14 +305,14 @@
             <TextView android:id="@+id/homeShortcut"
                 android:layout_width="0dp" android:layout_weight="1"
                 android:layout_height="42dp" android:gravity="center"
-                android:text="⌂  บ้าน" android:textSize="13sp"
+                android:text="บ้าน" android:textSize="13sp"
                 android:textColor="@color/nav_text" android:clickable="true"
                 android:focusable="true" android:background="@drawable/nav_bg_subtle"
                 android:contentDescription="@string/home_label"/>
             <TextView android:id="@+id/workShortcut"
                 android:layout_width="0dp" android:layout_weight="1"
                 android:layout_height="42dp" android:layout_marginStart="7dp"
-                android:gravity="center" android:text="▣  ที่ทำงาน"
+                android:gravity="center" android:text="ที่ทำงาน"
                 android:textSize="13sp" android:textColor="@color/nav_text"
                 android:clickable="true" android:focusable="true"
                 android:background="@drawable/nav_bg_subtle"
@@ -320,7 +320,7 @@
             <TextView android:id="@+id/recentShortcut"
                 android:layout_width="0dp" android:layout_weight="1"
                 android:layout_height="42dp" android:layout_marginStart="7dp"
-                android:gravity="center" android:text="◷  ล่าสุด"
+                android:gravity="center" android:text="ล่าสุด"
                 android:textSize="13sp" android:textColor="@color/nav_text"
                 android:clickable="true" android:focusable="true"
                 android:background="@drawable/nav_bg_subtle"
