@@ -18,6 +18,10 @@ import android.app.Dialog;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.MotionEvent;
+import android.transition.TransitionManager;
+import android.transition.AutoTransition;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import android.widget.Switch;
 import android.widget.ScrollView;
 import android.widget.FrameLayout;
@@ -749,8 +753,16 @@ public final class MainActivity extends Activity implements
         if (myLocation != null) bounds.include(myLocation);
         if (destination != null) bounds.include(destination);
         map.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds.build(), dp(84)));
-        String km = String.format(Locale.forLanguageTag("th-TH"), "%.1f กม.", distanceMeters / 1000f);
-        String time = Math.max(1L, Math.round(seconds / 60f)) + " นาที";
+        String km = String.format(Locale.US,"%.1f",distanceMeters/1000f)
+            +NaviLocale.text(this," กม."," km");
+        String time = Math.max(1L, Math.round(seconds / 60f))
+            + NaviLocale.text(this," นาที"," min");
+        String eta=new SimpleDateFormat("HH:mm",NaviLocale.thai(this)
+            ? new Locale("th","TH"):Locale.ENGLISH)
+            .format(new Date(System.currentTimeMillis()+Math.max(0L,seconds)*1000L));
+        TextView etaText=findViewById(R.id.etaText);
+        if(etaText!=null)etaText.setText(NaviLocale.text(this,"คาดว่าจะถึงประมาณ ","Estimated arrival ")+eta
+            +NaviLocale.text(this," • ตัวอย่างเส้นทาง ยังไม่มีเสียงนำทาง"," • Route preview, no turn-by-turn guidance"));
         routeSummary.setText(mode + "  •  " + km + "  •  " + time);
         ((Button)findViewById(R.id.routeButton)).setText(R.string.change_route);
         TripStore.setRoute(this, points, distanceMeters, seconds, mode);
@@ -1078,12 +1090,17 @@ public final class MainActivity extends Activity implements
 
     private void toggleRouteExpanded() {
         routeOpen=!routeOpen;
+        AutoTransition transition=new AutoTransition();
+        transition.setDuration(170);
+        TransitionManager.beginDelayedTransition(routePanel,transition);
         routeExpanded.setVisibility(routeOpen?View.VISIBLE:View.GONE);
         updateFavoriteButton();
     }
 
     private void openSearch() {
+        searchOverlay.setAlpha(0f);
         searchOverlay.setVisibility(View.VISIBLE);
+        searchOverlay.animate().alpha(1f).setDuration(150).start();
         searchInput.setText("");
         renderSavedPlaces();
         searchInput.requestFocus();
@@ -1216,7 +1233,7 @@ public final class MainActivity extends Activity implements
         sheet.setOrientation(LinearLayout.VERTICAL);
         sheet.setPadding(dp(20),dp(16),dp(20),dp(22));
         GradientDrawable bg=new GradientDrawable();
-        bg.setColor(Color.WHITE);
+        bg.setColor(getColor(R.color.nav_card));
         bg.setCornerRadii(new float[]{dp(24),dp(24),dp(24),dp(24),0,0,0,0});
         sheet.setBackground(bg);
         TextView title=new TextView(this);
