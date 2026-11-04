@@ -14,6 +14,11 @@ on:
       - 'app/src/main/java/com/navith/amap/car/**'
       - 'app/src/main/java/com/navith/amap/McpPlacesClient.java'
       - 'app/src/main/java/com/navith/amap/SettingsActivity.java'
+      - 'app/src/main/res/values/**'
+      - 'app/src/main/res/values-night/**'
+      - 'app/src/main/res/values-en/**'
+      - 'app/src/main/res/drawable/**'
+      - 'app/src/main/java/com/navith/amap/NaviLocale.java'
 
 permissions:
   contents: read
