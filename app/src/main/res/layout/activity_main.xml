@@ -1,266 +1,195 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:layout_width="match_parent" android:layout_height="match_parent"
     android:fitsSystemWindows="true">
 
     <com.amap.api.maps.MapView
         android:id="@+id/mapView"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_width="match_parent" android:layout_height="match_parent" />
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top"
-        android:layout_margin="14dp"
-        android:orientation="vertical">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_card"
-            android:elevation="8dp"
-            android:orientation="vertical"
-            android:padding="14dp">
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="NAVITH  /  MAPS"
-                    android:textColor="#0B2832"
-                    android:textSize="13sp"
-                    android:textStyle="bold" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="AMAP • TH"
-                    android:textColor="#087F76"
-                    android:textSize="11sp" />
-            </LinearLayout>
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:orientation="horizontal">
-                <EditText
-                    android:id="@+id/searchInput"
-                    android:layout_width="0dp"
-                    android:layout_height="52dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_input"
-                    android:singleLine="true"
-                    android:imeOptions="actionSearch"
-                    android:inputType="text"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="12dp"
-                    android:textColor="#0B2832"
-                    android:textSize="14sp"
-                    android:hint="ค้นหาสถานที่ เช่น สยามพารากอน" />
-                <Button
-                    android:id="@+id/searchButton"
-                    android:layout_width="72dp"
-                    android:layout_height="52dp"
-                    android:layout_marginStart="8dp"
-                    android:background="@drawable/bg_primary"
-                    android:text="ค้นหา"
-                    android:textColor="#FFFFFF"
-                    android:textSize="13sp" />
-            </LinearLayout>
+    <!-- One compact, tappable search surface instead of a permanent large form. -->
+    <LinearLayout android:layout_width="match_parent" android:layout_height="60dp"
+        android:layout_gravity="top" android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp" android:layout_marginTop="12dp"
+        android:background="@drawable/nav_bg_floating" android:elevation="4dp"
+        android:orientation="horizontal" android:gravity="center_vertical">
+        <LinearLayout android:id="@+id/searchBarButton"
+            android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:gravity="center_vertical"
+            android:orientation="horizontal" android:clickable="true" android:focusable="true"
+            android:contentDescription="@string/search_title"
+            android:paddingStart="17dp">
+            <TextView android:layout_width="24dp" android:layout_height="48dp"
+                android:gravity="center" android:text="⌕"
+                android:textSize="26sp" android:textColor="@color/nav_primary" />
+            <TextView android:id="@+id/searchBarTitle"
+                android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:layout_marginStart="8dp"
+                android:text="@string/search_placeholder" android:ellipsize="end"
+                android:singleLine="true" android:textSize="15sp"
+                android:textColor="@color/nav_secondary" />
         </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/resultsPanel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:background="@drawable/bg_card"
-            android:elevation="8dp"
-            android:orientation="vertical"
-            android:padding="10dp"
-            android:visibility="gone">
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:padding="8dp"
-                android:text="ผลการค้นหา • แตะเพื่อเลือกจุดหมาย"
-                android:textColor="#56666A"
-                android:textSize="12sp" />
-            <ScrollView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:fillViewport="false">
-                <LinearLayout
-                    android:id="@+id/resultsList"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical" />
-            </ScrollView>
-        </LinearLayout>
+        <View android:layout_width="1dp" android:layout_height="24dp"
+            android:background="@color/nav_border"/>
+        <TextView android:id="@+id/menuButton"
+            android:layout_width="52dp" android:layout_height="52dp"
+            android:gravity="center" android:clickable="true" android:focusable="true"
+            android:contentDescription="@string/settings"
+            android:text="☰" android:textSize="23sp" android:textColor="@color/nav_text" />
     </LinearLayout>
 
-    <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+    <!-- GPS is contextual data, never part of the destination card. -->
+    <TextView android:id="@+id/gpsStatus"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="top|start" android:layout_marginTop="82dp"
+        android:layout_marginStart="16dp" android:background="@drawable/nav_bg_white"
+        android:elevation="2dp" android:paddingStart="12dp" android:paddingEnd="12dp"
+        android:paddingTop="8dp" android:paddingBottom="8dp"
+        android:maxWidth="250dp" android:ellipsize="end" android:singleLine="true"
+        android:text="@string/gps_searching"
+        android:textColor="@color/nav_secondary" android:textSize="12sp" />
+
+    <!-- Exactly two controls remain on the map. -->
+    <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
         android:layout_gravity="end|center_vertical"
-        android:layout_marginEnd="12dp"
-        android:orientation="vertical">
-        <Button
-            android:id="@+id/locationButton"
-            android:layout_width="62dp"
-            android:layout_height="56dp"
-            android:background="@drawable/bg_card"
-            android:text="◎ GPS"
-            android:textColor="#087F76"
-            android:textSize="12sp" />
-        <Button
-            android:id="@+id/mapTypeButton"
-            android:layout_width="68dp"
-            android:layout_height="48dp"
-            android:layout_marginTop="6dp"
-            android:background="@drawable/bg_card"
-            android:text="ธีมแผนที่"
-            android:textColor="#0B2832"
-            android:textSize="10sp" />
-        <Button
-            android:id="@+id/viewButton"
-            android:layout_width="68dp"
-            android:layout_height="48dp"
-            android:layout_marginTop="6dp"
-            android:background="@drawable/bg_card"
-            android:text="3D"
-            android:textColor="#087F76"
-            android:textSize="12sp" />
-        <Button
-            android:id="@+id/trafficButton"
-            android:layout_width="68dp"
-            android:layout_height="48dp"
-            android:layout_marginTop="6dp"
-            android:background="@drawable/bg_card"
-            android:text="จราจร"
-            android:textColor="#0B2832"
-            android:textSize="11sp" />
-        <Button
-            android:id="@+id/settingsButton"
-            android:layout_width="68dp"
-            android:layout_height="48dp"
-            android:layout_marginTop="6dp"
-            android:background="@drawable/bg_card"
-            android:text="ตั้งค่า ⚙"
-            android:textColor="#0B2832"
-            android:textSize="11sp" />
+        android:layout_marginEnd="16dp" android:orientation="vertical">
+        <TextView android:id="@+id/locationButton"
+            android:layout_width="52dp" android:layout_height="52dp"
+            android:background="@drawable/nav_bg_white" android:elevation="3dp"
+            android:gravity="center" android:clickable="true" android:focusable="true"
+            android:contentDescription="@string/my_position" android:text="◎"
+            android:textSize="29sp" android:textColor="@color/nav_primary"/>
+        <TextView android:id="@+id/mapTypeButton"
+            android:layout_width="52dp" android:layout_height="52dp"
+            android:layout_marginTop="8dp" android:background="@drawable/nav_bg_white"
+            android:elevation="3dp" android:gravity="center"
+            android:clickable="true" android:focusable="true"
+            android:contentDescription="@string/layers"
+            android:text="▱" android:textSize="27sp" android:textColor="@color/nav_text"/>
     </LinearLayout>
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:layout_margin="14dp"
-        android:background="@drawable/bg_card"
-        android:elevation="10dp"
-        android:orientation="vertical"
-        android:padding="16dp">
-        <TextView
-            android:id="@+id/speedText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="6dp"
-            android:text="◎ กำลังระบุตำแหน่ง GPS"
-            android:textColor="#087F76"
-            android:textStyle="bold"
-            android:textSize="12sp" />
-        <TextView
-            android:id="@+id/statusText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="แตะค้างบนแผนที่เพื่อเลือกจุดหมาย หรือค้นหาด้านบน"
-            android:textColor="#4C626B"
-            android:textSize="13sp" />
-        <LinearLayout
-            android:id="@+id/routePanel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:orientation="vertical"
-            android:visibility="gone">
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="#E9EEF0" />
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="จุดหมายปลายทาง"
-                android:textColor="#71838C"
-                android:textSize="11sp" />
-            <TextView
-                android:id="@+id/destinationText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:maxLines="2"
-                android:text="-"
-                android:textColor="#092B32"
-                android:textSize="18sp"
-                android:textStyle="bold" />
-            <RadioGroup
-                android:id="@+id/modeGroup"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:orientation="horizontal">
-                <RadioButton
-                    android:id="@+id/modeDrive"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:checked="true"
-                    android:text="รถยนต์"
-                    android:textSize="13sp" />
-                <RadioButton
-                    android:id="@+id/modeWalk"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="16dp"
-                    android:text="เดินเท้า"
-                    android:textSize="13sp" />
-            </RadioGroup>
-            <TextView
-                android:id="@+id/routeSummary"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="เลือกวิธีเดินทางแล้วกดแสดงเส้นทาง"
-                android:textColor="#4C626B"
-                android:textSize="13sp" />
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:orientation="horizontal">
-                <Button
-                    android:id="@+id/routeButton"
-                    android:layout_width="0dp"
-                    android:layout_height="52dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_primary"
-                    android:text="แสดงเส้นทาง"
-                    android:textAllCaps="false"
-                    android:textColor="#FFFFFF" />
-                <Button
-                    android:id="@+id/clearButton"
-                    android:layout_width="88dp"
-                    android:layout_height="52dp"
-                    android:layout_marginStart="8dp"
-                    android:background="@drawable/bg_outline"
-                    android:text="ล้าง"
-                    android:textColor="#0B2832" />
+    <!-- Only the destination is primary in this small, expandable sheet. -->
+    <LinearLayout android:id="@+id/routePanel"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_gravity="bottom" android:layout_margin="12dp"
+        android:paddingStart="16dp" android:paddingEnd="16dp"
+        android:paddingBottom="14dp" android:paddingTop="8dp"
+        android:background="@drawable/nav_bg_sheet" android:elevation="8dp"
+        android:orientation="vertical" android:visibility="gone">
+        <TextView android:id="@+id/sheetGrabber" android:layout_width="64dp"
+            android:layout_height="24dp" android:layout_gravity="center_horizontal"
+            android:gravity="center" android:contentDescription="@string/more_options"
+            android:clickable="true" android:focusable="true"
+            android:text="━━━━" android:textColor="#BCCDD1" android:textSize="19sp"/>
+        <LinearLayout android:id="@+id/routeSheetHeader"
+            android:layout_width="match_parent" android:layout_height="56dp"
+            android:gravity="center_vertical" android:clickable="true"
+            android:focusable="true" android:orientation="horizontal"
+            android:contentDescription="@string/more_options">
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:orientation="vertical">
+                <TextView android:id="@+id/destinationText"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:textColor="@color/nav_text" android:textSize="18sp"
+                    android:textStyle="bold" android:maxLines="1" android:ellipsize="end"/>
+                <TextView android:id="@+id/routeSummary"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp" android:maxLines="2"
+                    android:text="@string/route_not_navigation"
+                    android:textColor="@color/nav_secondary" android:textSize="13sp" />
             </LinearLayout>
+            <TextView android:id="@+id/clearButton" android:layout_width="48dp"
+                android:layout_height="48dp" android:gravity="center"
+                android:text="×" android:textSize="28sp"
+                android:contentDescription="@string/close_route"
+                android:clickable="true" android:focusable="true"
+                android:textColor="@color/nav_secondary" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/routeExpanded"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:visibility="gone"
+            android:layout_marginTop="6dp">
+            <View android:layout_width="match_parent" android:layout_height="1dp"
+                android:background="@color/nav_border" />
+            <RadioGroup android:id="@+id/modeGroup"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:layout_marginTop="8dp">
+                <RadioButton android:id="@+id/modeDrive" android:layout_width="wrap_content"
+                    android:layout_height="48dp" android:minHeight="48dp"
+                    android:checked="true" android:buttonTint="@color/nav_primary"
+                    android:text="@string/drive" android:textSize="14sp"/>
+                <RadioButton android:id="@+id/modeWalk" android:layout_width="wrap_content"
+                    android:layout_height="48dp" android:minHeight="48dp"
+                    android:layout_marginStart="24dp" android:buttonTint="@color/nav_primary"
+                    android:text="@string/walk" android:textSize="14sp"/>
+            </RadioGroup>
+            <TextView android:id="@+id/routeOptionsButton"
+                android:layout_width="match_parent" android:layout_height="48dp"
+                android:gravity="center_vertical" android:text="⚙  ตัวเลือกเส้นทาง   ›"
+                android:textSize="14sp" android:textColor="@color/nav_primary"
+                android:clickable="true" android:focusable="true"
+                android:contentDescription="@string/more_options"/>
+        </LinearLayout>
+        <Button android:id="@+id/routeButton"
+            android:layout_width="match_parent" android:layout_height="52dp"
+            android:layout_marginTop="10dp" android:background="@drawable/nav_bg_button"
+            android:text="@string/view_route" android:textAllCaps="false"
+            android:textColor="@android:color/white" android:textStyle="bold"
+            android:textSize="15sp"/>
+    </LinearLayout>
+
+    <!-- Small info only when nothing is selected; never a full-width opaque card. -->
+    <TextView android:id="@+id/statusText"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start" android:layout_marginStart="16dp"
+        android:layout_marginBottom="20dp" android:maxWidth="260dp"
+        android:background="@drawable/nav_bg_white" android:elevation="1dp"
+        android:padding="10dp" android:textSize="12sp" android:maxLines="2"
+        android:ellipsize="end" android:textColor="@color/nav_secondary"
+        android:text="@string/search_empty"/>
+
+    <!-- Search takes focus only when requested, with recent/favorites and POI suggestions. -->
+    <LinearLayout android:id="@+id/searchOverlay"
+        android:layout_width="match_parent" android:layout_height="match_parent"
+        android:background="@color/nav_card" android:orientation="vertical"
+        android:visibility="gone">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="64dp"
+            android:paddingStart="8dp" android:paddingEnd="12dp" android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <TextView android:id="@+id/searchBack"
+                android:layout_width="48dp" android:layout_height="48dp"
+                android:text="‹" android:textSize="34sp" android:gravity="center"
+                android:textColor="@color/nav_text" android:clickable="true"
+                android:focusable="true" android:contentDescription="@string/back" />
+            <EditText android:id="@+id/searchInput"
+                android:layout_width="0dp" android:layout_height="52dp"
+                android:layout_weight="1" android:singleLine="true"
+                android:imeOptions="actionSearch" android:inputType="text"
+                android:background="@drawable/nav_bg_subtle"
+                android:paddingStart="14dp" android:paddingEnd="12dp"
+                android:textColor="@color/nav_text" android:textSize="16sp"
+                android:hint="@string/search_placeholder"/>
+            <TextView android:id="@+id/searchClear"
+                android:layout_width="48dp" android:layout_height="48dp"
+                android:text="×" android:textSize="29sp" android:gravity="center"
+                android:textColor="@color/nav_secondary" android:clickable="true"
+                android:focusable="true" android:contentDescription="@string/search_clear"/>
+        </LinearLayout>
+        <TextView android:id="@+id/searchResultsHeading"
+            android:layout_width="match_parent" android:layout_height="48dp"
+            android:paddingStart="20dp" android:gravity="center_vertical"
+            android:text="@string/recent_places" android:textStyle="bold"
+            android:textColor="@color/nav_text" android:textSize="15sp"/>
+        <LinearLayout android:id="@+id/resultsPanel"
+            android:layout_width="match_parent" android:layout_height="0dp"
+            android:layout_weight="1" android:orientation="vertical">
+            <ScrollView android:layout_width="match_parent" android:layout_height="match_parent"
+                android:fillViewport="false">
+                <LinearLayout android:id="@+id/resultsList"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:paddingStart="16dp" android:paddingEnd="16dp"
+                    android:orientation="vertical"/>
+            </ScrollView>
         </LinearLayout>
     </LinearLayout>
 </FrameLayout>
