@@ -96,10 +96,16 @@ public final class SettingsActivity extends Activity {
                 "Make NaviTH work for your journey"),14,secondary,false);
             hint.setPadding(dp(8),dp(2),dp(8),dp(16));
             content.addView(hint);
+            hubCard("general",tx("ทั่วไป","General"),
+                tx("ค้นหา · แผนที่ · การแสดงผล","Search · Map · Interface"),"☰");
+            hubCard("visual",tx("การตั้งค่าภาพ","Display settings"),
+                tx("ทิศทางหน้าจอ · มุมกล้อง · โหมดวัน/คืน","Orientation · Camera · Day/night"),"▣");
             hubCard("map",tx("แผนที่และการแสดงผล","Map & appearance"),
                 tx("มุมมอง · ชั้นข้อมูล · ธีม","View · Layers · Theme"),"◈");
-            hubCard("navigation",tx("การนำทาง","Navigation"),
-                tx("ประเภทเส้นทาง · ความเร็ว · เสียง","Route preferences · Speed · Voice"),"➤");
+            hubCard("navigation",tx("การตั้งค่าการนำทาง","Navigation settings"),
+                tx("รถยนต์ · เส้นทาง · เสียง · ไอคอน","Driving · Routes · Voice · Marker"),"➤");
+            hubCard("navextra",tx("การนำทางเพิ่มเติม","Advanced guidance"),
+                tx("คำเตือน · ช่วยเหลือ · ข้อมูลที่รองรับ","Alerts · Assistance · Data coverage"),"⚙");
             hubCard("offline",tx("แผนที่ออฟไลน์","Offline maps"),
                 tx("ดาวน์โหลดพื้นที่ · จัดการข้อมูล","Download areas · Manage data"),"⇩");
             hubCard("privacy",tx("ความเป็นส่วนตัวและตำแหน่ง","Location & privacy"),
@@ -118,8 +124,11 @@ public final class SettingsActivity extends Activity {
 
     private String categoryTitle(String name) {
         switch(name) {
+            case "general": return tx("ทั่วไป","General");
+            case "visual": return tx("การตั้งค่าภาพ","Display settings");
+            case "navextra": return tx("การนำทางเพิ่มเติม","Advanced guidance");
             case "map": return tx("แผนที่และการแสดงผล","Map & appearance");
-            case "navigation": return tx("การนำทาง","Navigation");
+            case "navigation": return tx("การตั้งค่าการนำทาง","Navigation settings");
             case "offline": return tx("แผนที่ออฟไลน์","Offline maps");
             case "privacy": return tx("ความเป็นส่วนตัวและตำแหน่ง","Location & privacy");
             case "advanced": return tx("ขั้นสูงและนักพัฒนา","Advanced & developer");
@@ -162,6 +171,48 @@ public final class SettingsActivity extends Activity {
 
     private void renderCategory(String key) {
         switch(key) {
+            case "general":
+                section(tx("การตั้งค่าอินเทอร์เฟซ","Interface"));groupStart();
+                line(tx("ตำแหน่งช่องค้นหาหน้าแรก","Home search position"),null,
+                    prefs.getBoolean("home_search_bottom",true)?tx("ด้านล่าง","Bottom"):tx("ด้านบน","Top"),
+                    ()->chooseHomeSearchPosition());
+                line(tx("โหมดมืด","Dark mode"),null,themeName(),()->chooseTheme());
+                line(tx("ธีมสี","Accent theme"),
+                    tx("สีหลักของปุ่มและแถบนำทาง","Buttons and navigation accent"),
+                    tx("ฟ้า NaviTH","NaviTH blue"),()->showAccentInfo());
+                toggle(tx("เปิดหน้าจอค้างไว้","Keep screen awake"),
+                    tx("เมื่อแอป NaviTH อยู่บนหน้าจอ","Only while NaviTH is in foreground"),
+                    "keep_screen_on",false);
+                section(tx("การตั้งค่าแผนที่พื้นฐาน","Basic map settings"));groupStart();
+                line(tx("ขนาดตัวอักษรแผนที่","Map label size"),
+                    tx("ตัวเลือกของแผนที่ฐานขึ้นอยู่กับ AMAP","Vendor basemap labels are controlled by AMAP"),
+                    tx("ตามแผนที่","Map default"),()->showDataLimit());
+                toggle(tx("แสดงปุ่มซูม","Show zoom controls"),null,"zoom_controls",true);
+                toggle(tx("ล็อกการหมุนแผนที่ 2D","Lock rotation in 2D"),null,"lock_2d",false);
+                toggle(tx("เข้าโหมด 3 มิติเมื่อเริ่มนำทาง","3D camera in guidance"),null,"view3d",true);
+                toggle(tx("เครื่องหมายตำแหน่งใช้รูปโปรไฟล์","Use own image as location marker"),
+                    tx("เลือกภาพจริงในเมนูไอคอนตำแหน่ง","Choose an image in Position icon settings"),
+                    "marker_custom_hint",false);
+                line(tx("ไอคอนตำแหน่ง","Position icon"),null,
+                    NavigationMarkerFactory.label(this,prefs.getInt("vehicle_icon",6)),()->chooseMarker());
+                toggle(tx("แสดงแผนที่ภายในอาคาร","Indoor maps"),
+                    tx("ใช้ได้เฉพาะเมื่อ AMAP มีข้อมูลพื้นที่นั้น","Only if AMAP covers the building"),
+                    "indoor",true);
+                break;
+            case "visual":
+                section(tx("ทิศทางของหน้าจอ","Screen orientation"));groupStart();
+                segmented(new String[]{tx("อัตโนมัติ","Auto"),tx("แนวตั้ง","Portrait"),tx("แนวนอน","Landscape")},
+                    "screen_orientation",new String[]{"auto","portrait","landscape"},"auto");
+                section(tx("มุมมองการนำทาง","Navigation camera"));groupStart();
+                segmented(new String[]{tx("หน้ารถขึ้นบน","Heading up"),tx("เหนือขึ้นบน","North up")},
+                    "camera_direction",new String[]{"heading","north"},"heading");
+                section(tx("โหมดวัน/คืน","Day / night"));groupStart();
+                segmented(new String[]{tx("อัตโนมัติ","Auto"),tx("กลางวัน","Day"),tx("กลางคืน","Night")},
+                    "theme",new String[]{"auto","day","night"},"auto");
+                section(tx("มุมแผนที่","Map perspective"));groupStart();
+                segmented(new String[]{"2D","3D"},
+                    "map_perspective",new String[]{"2d","3d"},"3d");
+                break;
             case "map":
                 section(tx("รูปแบบแผนที่","Map appearance"));groupStart();
                 line(tx("มุมมองแผนที่","Map view"),null,
@@ -178,7 +229,16 @@ public final class SettingsActivity extends Activity {
                 toggle(tx("อาคาร 3D","3D buildings"),null,"buildings",true);
                 break;
             case "navigation":
-                section(tx("การวางเส้นทาง","Route preferences"));groupStart();
+                section(tx("ประเภทยานพาหนะ","Vehicle profile"));groupStart();
+                segmented(new String[]{tx("รถยนต์","Car"),tx("รถบรรทุก¹","Truck¹"),tx("มอเตอร์ไซค์¹","Moto¹")},
+                    "vehicle_profile",new String[]{"car","truck","motorcycle"},"car");
+                TextView vehicleNote=label(tx("¹ ต้องใช้ผู้ให้บริการเส้นทางที่รองรับข้อจำกัดเฉพาะรถ ไม่ใช้เส้นทางรถยนต์แทน",
+                    "¹ Requires vehicle-specific routing; car routes will not be substituted."),12,secondary,false);
+                vehicleNote.setPadding(dp(8),dp(8),dp(8),dp(2));content.addView(vehicleNote);
+                section(tx("ความชอบเส้นทาง","Route preferences"));groupStart();
+                segmented(new String[]{tx("แนะนำ","Recommended"),tx("ระยะสั้น","Shortest"),tx("เวลาสั้น","Fastest")},
+                    "route_priority",new String[]{"recommended","shortest","fastest"},"recommended");
+                section(tx("ข้อจำกัดเส้นทาง","Avoid"));groupStart();
                 toggle(tx("หลีกเลี่ยงค่าผ่านทาง","Avoid tolls"),null,"avoid_tolls",false);
                 toggle(tx("หลีกเลี่ยงทางด่วน","Avoid highways"),null,"avoid_highway",false);
                 toggle(tx("หลีกเลี่ยงรถติด","Avoid congestion"),
@@ -197,12 +257,38 @@ public final class SettingsActivity extends Activity {
                     tx("ภาพเวกเตอร์ 2.5D ติดระนาบแผนที่ ไม่ใช่โมเดล 3D",
                        "Ground-aligned 2.5D rendering, not a 3D mesh"),
                     "marker_perspective",true);
-                section(tx("เสียงและการนำทางจริง","Voice & guidance"));groupStart();
+                section(tx("เสียงระหว่างนำทาง","Guidance voice"));groupStart();
+                segmented(new String[]{tx("อัจฉริยะ","Smart"),tx("ละเอียด","Detailed"),tx("กระชับ","Concise"),tx("ปิดเสียง","Mute")},
+                    "voice_style",new String[]{"smart","detailed","concise","mute"},"smart");
+                line(tx("ภาษาของเสียงนำทาง","Guidance language"),
+                    tx("ใช้ Android TTS ในโหมด Mapbox ทดลอง","Android TTS in Mapbox experimental guidance"),
+                    tx("ไทย","Thai"),()->showVoiceInfo());
+                section(tx("ไอคอนและระบบนำทาง","Marker & engine"));groupStart();
                 line(tx("สถานะระบบนำทาง","Navigation availability"),
                     tx("การนำทางจริงต้องใช้ Navigation Test SDK",
                        "Turn-by-turn requires the Navigation Test SDK"),
                     NavSdkBridge.isInstalled()?tx("รุ่นทดลอง","Test only"):tx("ดูเส้นทาง","Preview"),
                     ()->showNavigationDetails());
+                break;
+            case "navextra":
+                section(tx("การนำทางเพิ่มเติม","Advanced guidance"));groupStart();
+                line(tx("การแนะนำช่องทางและภาพแยกถนน","Lane guidance and junction view"),
+                    tx("ยังไม่รองรับ ต้องเชื่อมข้อมูลและ SDK ที่ให้บริการในไทย",
+                       "Requires region-capable SDK and lane data"),
+                    tx("ยังไม่มี","Unavailable"),()->showDataLimit());
+                line(tx("AI วิเคราะห์สัญญาณไฟจราจร","AI traffic lights"),
+                    tx("ยังไม่มีข้อมูลสัญญาณไฟในไทยที่ยืนยันได้",
+                       "Verified Thailand signal data is unavailable"),
+                    tx("ยังไม่มี","Unavailable"),()->showDataLimit());
+                toggle(tx("แจ้งเตือนเมื่อออกนอกเส้นทาง","Off-route warnings"),
+                    tx("Mapbox รุ่นทดลองใช้ GPS ตรวจสอบแนวเส้นทาง","Experimental Mapbox GPS route checking"),
+                    "offroute_alerts",true);
+                toggle(tx("ใช้พลังงานอย่างเหมาะสม","Battery-aware display"),
+                    tx("ลดการเปิดหน้าจอค้างเมื่อไม่ได้ใช้แอป","Avoid keeping display awake"),
+                    "battery_aware",true);
+                line(tx("สถานะ Android Auto","Android Auto status"),
+                    tx("ยังแสดงเส้นทางตัวอย่าง ไม่ใช่การนำทางเต็มรูปแบบ",
+                       "Route preview only, not full active guidance"),"›",()->showNavigationDetails());
                 break;
             case "offline":
                 section(tx("พื้นที่ดาวน์โหลด","Download areas"));groupStart();
@@ -247,6 +333,78 @@ public final class SettingsActivity extends Activity {
                     "›",()->showNavigationDetails());
                 break;
             default: break;
+        }
+    }
+
+
+    private void chooseHomeSearchPosition() {
+        new AlertDialog.Builder(this)
+            .setTitle(tx("ตำแหน่งช่องค้นหา","Search bar position"))
+            .setItems(new String[]{tx("ด้านล่างแบบ NaviTH","Bottom"),tx("ด้านบน","Top")},(d,which)->{
+                prefs.edit().putBoolean("home_search_bottom",which==0).apply();
+                build();
+            }).show();
+    }
+
+    private void showAccentInfo() {
+        new AlertDialog.Builder(this).setTitle(tx("ธีม NaviTH","NaviTH theme"))
+            .setMessage(tx("ใช้สีฟ้าของ NaviTH และไอคอนที่ออกแบบขึ้นใหม่ ไม่คัดลอกโลโก้หรือภาพของแอปอื่น",
+                "Uses NaviTH's own blue palette and original icons, not another app's assets."))
+            .setPositiveButton(tx("ตกลง","OK"),null).show();
+    }
+
+    private void showDataLimit() {
+        new AlertDialog.Builder(this).setTitle(tx("ข้อจำกัดของข้อมูล","Data availability"))
+            .setMessage(tx("ตัวเลือกนี้ยังใช้ไม่ได้จริงกับบริการที่เชื่อมต่ออยู่ จึงไม่เปิดสวิตช์ให้เหมือนว่ามีฟีเจอร์แล้ว",
+                "Current connected providers do not supply this feature. It is deliberately not presented as a working switch."))
+            .setPositiveButton(tx("เข้าใจแล้ว","OK"),null).show();
+    }
+
+    private void showVoiceInfo() {
+        new AlertDialog.Builder(this).setTitle(tx("เสียงนำทางภาษาไทย","Thai voice guidance"))
+            .setMessage(tx("NaviTH ใช้ระบบแปลงข้อความเป็นเสียง Android ของเครื่องในโหมด Mapbox ทดสอบ กรุณาติดตั้งเสียงไทยในตั้งค่า Text-to-Speech ของ Android หากไม่ออกเสียง",
+                "Experimental Mapbox guidance uses the device's Android TTS. Install a Thai voice in Android Text-to-Speech settings if needed."))
+            .setPositiveButton(tx("ตกลง","OK"),null).show();
+    }
+
+    private void segmented(String[] labels, String key, String[] values, String def) {
+        if(labels.length!=values.length) return;
+        String current=prefs.getString(key,def);
+        LinearLayout bar=new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setPadding(dp(4),dp(4),dp(4),dp(4));
+        bar.setBackground(surface(getColor(R.color.nav_soft_accent),22));
+        LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(-1,-2);
+        bp.bottomMargin=dp(5);
+        lastGroup.addView(bar,bp);
+        for(int i=0;i<labels.length;i++) {
+            final String value=values[i];
+            final boolean active=current.equals(value);
+            TextView chip=label(labels[i],labels.length>=4?12:14,
+                active?Color.WHITE:primary,active);
+            chip.setGravity(Gravity.CENTER);
+            chip.setMaxLines(2);
+            chip.setMinHeight(dp(60));
+            chip.setPadding(dp(3),dp(7),dp(3),dp(7));
+            chip.setBackground(surface(active?accent:getColor(R.color.nav_soft_accent),18));
+            LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(0,-2,1f);
+            cp.leftMargin=i==0?0:dp(3);
+            bar.addView(chip,cp);
+            chip.setClickable(true);chip.setFocusable(true);
+            chip.setOnClickListener(v->{
+                if("vehicle_profile".equals(key)&& !"car".equals(value)) {
+                    new AlertDialog.Builder(this)
+                        .setTitle(tx("ยังไม่รองรับยานพาหนะนี้","Vehicle mode unavailable"))
+                        .setMessage(tx("ต้องมี API ที่คำนวณทางตามข้อจำกัดของรถประเภทนี้จริง ๆ ไม่สามารถใช้เส้นทางรถยนต์ทั่วไปทดแทนได้",
+                            "Requires a vehicle-specific routing API; car routing is not a safe substitute."))
+                        .setPositiveButton(tx("ตกลง","OK"),null).show();
+                    return;
+                }
+                SharedPreferences.Editor edit=prefs.edit().putString(key,value);
+                if("map_perspective".equals(key))edit.putBoolean("view3d","3d".equals(value));
+                edit.apply();
+                build();
+            });
         }
     }
 
