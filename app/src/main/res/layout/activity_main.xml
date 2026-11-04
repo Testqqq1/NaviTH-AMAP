@@ -123,6 +123,18 @@
                     android:layout_marginStart="24dp" android:buttonTint="@color/nav_primary"
                     android:text="@string/walk" android:textSize="14sp"/>
             </RadioGroup>
+            <Button android:id="@+id/startNavigationButton"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/nav_bg_button"
+                android:text="เริ่มนำทาง (ทดลอง)"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white"
+                android:textStyle="bold"
+                android:textSize="15sp"
+                android:visibility="gone"
+                android:contentDescription="เริ่มนำทางผ่าน AMAP Navigation SDK (ทดลอง)" />
             <TextView android:id="@+id/addressLookupButton"
                 android:layout_width="match_parent" android:layout_height="48dp"
                 android:gravity="center_vertical"
