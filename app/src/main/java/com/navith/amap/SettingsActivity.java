@@ -485,7 +485,7 @@ public final class SettingsActivity extends Activity {
         for(int kind:new int[]{6,8,5,0,1,3,2,4,9,7}){
             LinearLayout row=new LinearLayout(this);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setMinHeight(dp(72));
+            row.setMinimumHeight(dp(72));
             row.setPadding(dp(8),dp(5),dp(8),dp(5));
             if(kind==selected)row.setBackground(surface(getColor(R.color.nav_soft_accent),16));
             ImageView preview=new ImageView(this);
