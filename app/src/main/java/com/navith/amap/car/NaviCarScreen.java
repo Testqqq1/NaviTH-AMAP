@@ -3,6 +3,8 @@ package com.navith.amap.car;
 import android.Manifest;
 import android.app.Presentation;
 import android.content.Context;
+import android.content.res.Configuration;
+import com.amap.api.maps.model.CameraPosition;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Rect;
@@ -64,7 +66,9 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
     private static final String TAG="NaviTH-Car";
     private static final LatLng BANGKOK=new LatLng(13.7563,100.5018);
     private final SharedPreferences prefs;
+    private final SharedPreferences viewPrefs;
     private final SharedPreferences.OnSharedPreferenceChangeListener changes;
+    private final SharedPreferences.OnSharedPreferenceChangeListener viewChanges;
     private VirtualDisplay virtualDisplay;
     private Presentation presentation;
     private MapView mapView;
@@ -83,6 +87,9 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
     NaviCarScreen(@NonNull CarContext c) {
         super(c);
         prefs=TripStore.prefs(c);
+        viewPrefs=c.getSharedPreferences("navith_view",Context.MODE_PRIVATE);
+        viewChanges=(sp,key)->new Handler(Looper.getMainLooper()).post(this::applyCarMapStyle);
+        viewPrefs.registerOnSharedPreferenceChangeListener(viewChanges);
         changes=(shared,key) -> {
             if (TripStore.DESTINATION.equals(key) || TripStore.ROUTE.equals(key) || TripStore.LOCATION.equals(key)) {
                 new Handler(Looper.getMainLooper()).post(() -> {
@@ -95,6 +102,10 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         getLifecycle().addObserver((LifecycleEventObserver)(source,event)->{
             if (event == Lifecycle.Event.ON_DESTROY) {
                 prefs.unregisterOnSharedPreferenceChangeListener(changes);
+                viewPrefs.unregisterOnSharedPreferenceChangeListener(viewChanges);
+                // This is an estimated last-connected position, not verified parking.
+                if (TripStore.hasRecentLocation(getCarContext()))
+                    TripStore.saveParking(getCarContext(), TripStore.location(getCarContext()));
                 if (locationManager != null) try {locationManager.removeUpdates(locationListener);}catch(SecurityException ignored){}
                 releasePresentation();
             }
@@ -168,7 +179,7 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
                     new LatLonPoint(from.latitude,from.longitude),
                     new LatLonPoint(dst.latitude,dst.longitude));
             routeSearch.calculateDriveRouteAsyn(new RouteSearch.DriveRouteQuery(
-                    f,RouteSearch.DRIVING_SINGLE_DEFAULT,null,null,""));
+                    f,routeStrategy(),null,null,""));
         } catch (Exception e) { routing=false;Log.w(TAG,"AMAP preview routing unavailable",e);invalidate(); }
     }
     @Override public void onDriveRouteSearched(DriveRouteResult result,int error) {
@@ -211,14 +222,43 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
             presentation.show();
             mapView.onResume();
             map=mapView.getMap();
-            map.setMapType(AMap.MAP_TYPE_NORMAL);
+            applyCarMapStyle();
             map.getUiSettings().setZoomControlsEnabled(false);
             map.getUiSettings().setCompassEnabled(false);
             updateMap();
+            applyCarMapStyle();
         } catch (Exception e) {
             Log.e(TAG,"MapView on virtual display needs real AA/DHU validation",e);
             releasePresentation();
         }
+    }
+
+    private int routeStrategy() {
+        boolean toll=viewPrefs.getBoolean("avoid_tolls",false);
+        boolean highway=viewPrefs.getBoolean("avoid_highway",false);
+        boolean jam=viewPrefs.getBoolean("avoid_traffic",true);
+        if (toll && highway && jam) return RouteSearch.DRIVING_SINGLE_NO_HIGHWAY_SAVE_MONEY_AVOID_CONGESTION;
+        if (toll && highway) return RouteSearch.DRIVING_SINGLE_NO_HIGHWAY_SAVE_MONEY;
+        if (toll && jam) return RouteSearch.DRIVING_SINGLE_SAVE_MONEY_AVOID_CONGESTION;
+        if (highway) return RouteSearch.DRIVING_SINGLE_NO_HIGHWAY;
+        if (toll) return RouteSearch.DRIVING_SINGLE_SAVE_MONEY;
+        return jam ? RouteSearch.DRIVING_SINGLE_AVOID_CONGESTION : RouteSearch.DRIVING_SINGLE_DEFAULT;
+    }
+
+    private void applyCarMapStyle() {
+        if (map == null) return;
+        String theme=viewPrefs.getString("theme","auto");
+        boolean dark=(getCarContext().getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES;
+        int type="satellite".equals(theme) ? AMap.MAP_TYPE_SATELLITE :
+                ("night".equals(theme) || ("auto".equals(theme) && dark))
+                    ? AMap.MAP_TYPE_NIGHT : AMap.MAP_TYPE_NORMAL;
+        map.setMapType(type);
+        map.setTrafficEnabled(viewPrefs.getBoolean("traffic",true));
+        boolean third=viewPrefs.getBoolean("view3d",true);
+        map.showBuildings(third);
+        map.moveCamera(CameraUpdateFactory.newCameraPosition(
+                new CameraPosition.Builder(map.getCameraPosition()).tilt(third ? 55f : 0f).build()));
     }
 
     private void updateMap() {
