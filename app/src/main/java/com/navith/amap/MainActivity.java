@@ -73,6 +73,13 @@ import com.amap.api.maps.model.Polyline;
 import com.amap.api.maps.model.PolylineOptions;
 import com.amap.api.services.core.LatLonPoint;
 import com.amap.api.services.core.PoiItem;
+import com.amap.api.services.geocoder.GeocodeSearch;
+import com.amap.api.services.geocoder.GeocodeQuery;
+import com.amap.api.services.geocoder.GeocodeResult;
+import com.amap.api.services.geocoder.GeocodeAddress;
+import com.amap.api.services.geocoder.RegeocodeQuery;
+import com.amap.api.services.geocoder.RegeocodeResult;
+import com.amap.api.services.geocoder.RegeocodeAddress;
 import com.amap.api.services.poisearch.PoiResult;
 import com.amap.api.services.poisearch.PoiSearch;
 import com.amap.api.services.route.BusRouteResult;
@@ -126,6 +133,8 @@ public final class MainActivity extends Activity implements
     private boolean locationRequested = false;
     private PoiSearch activePoiSearch;
     private RouteSearch routeSearch;
+    private GeocodeSearch geocodeSearch;
+    private LatLng waitingReversePoint;
 
     private EditText searchInput;
     private TextView statusText;
@@ -280,6 +289,9 @@ public final class MainActivity extends Activity implements
         findViewById(R.id.sheetGrabber).setOnClickListener(v -> toggleRouteExpanded());
         findViewById(R.id.routeOptionsButton).setOnClickListener(v -> chooseRouteOptions());
         findViewById(R.id.favoriteButton).setOnClickListener(v -> toggleFavorite());
+        findViewById(R.id.addressLookupButton).setOnClickListener(v -> {
+            if(destination!=null)reverseSelectedAddress(destination);
+        });
         modeGroup.setOnCheckedChangeListener((g,id) -> {
             clearRouteLine();
             driveAlternatives.clear();
@@ -301,7 +313,10 @@ public final class MainActivity extends Activity implements
             }
         });
 
-        map.setOnMapLongClickListener(latLng -> chooseDestination(latLng, "ตำแหน่งที่เลือกบนแผนที่"));
+        map.setOnMapLongClickListener(latLng -> {
+            chooseDestination(latLng,tr("จุดที่เลือกบนแผนที่","Selected map location"));
+            reverseSelectedAddress(latLng);
+        });
         map.setOnMarkerClickListener(marker -> {
             if (marker.equals(destinationMarker)) {
                 routePanel.setVisibility(View.VISIBLE);
@@ -336,6 +351,12 @@ public final class MainActivity extends Activity implements
             routeSearch.setRouteSearchListener(this);
         } catch (Exception e) {
             status(tr("เริ่มบริการค้นหาเส้นทางไม่ได้: ","Route service unavailable: ")+e.getMessage());
+        }
+
+        // Search SDK must be initialized only after user has accepted AMAP privacy terms.
+        try { setupGeocodeSearch(); }
+        catch(Exception ex) {
+            status(tr("บริการแปลงที่อยู่ยังไม่พร้อม","Geocoding service unavailable"));
         }
 
         if ("YOUR_AMAP_KEY".equals(readApiKey())) {
@@ -543,6 +564,12 @@ public final class MainActivity extends Activity implements
             if(!initialized || isFinishing() || searchOverlay.getVisibility()!=View.VISIBLE) return;
             if(!term.equals(searchInput.getText().toString().trim())) return;
             resultsList.removeAllViews();
+            if(code==1000 && (result==null || result.getPois()==null || result.getPois().isEmpty())) {
+                // Only geocode when keyword POI search found nothing. Do not double-bill
+                // every keystroke or call another API after an auth/network error.
+                searchAddressFallback(term);
+                return;
+            }
             if(code!=1000 || result==null || result.getPois()==null || result.getPois().isEmpty()) {
                 TextView msg=new TextView(this);
                 msg.setPadding(dp(16),dp(20),dp(16),dp(20));
@@ -603,10 +630,126 @@ public final class MainActivity extends Activity implements
         // Reserved for future POI detail lookup.
     }
 
+    private void setupGeocodeSearch() throws Exception {
+        if(geocodeSearch!=null)return;
+        geocodeSearch=new GeocodeSearch(this);
+        geocodeSearch.setOnGeocodeSearchListener(new GeocodeSearch.OnGeocodeSearchListener() {
+            @Override public void onGeocodeSearched(GeocodeResult result,int code) {
+                runOnUiThread(()->renderGeocoding(result,code));
+            }
+            @Override public void onRegeocodeSearched(RegeocodeResult result,int code) {
+                runOnUiThread(()->renderReverseGeocoding(result,code));
+            }
+        });
+    }
+
+    private void searchAddressFallback(String term) {
+        if(searchOverlay.getVisibility()!=View.VISIBLE || !term.equals(searchInput.getText().toString().trim()))
+            return;
+        try {
+            setupGeocodeSearch();
+            // This is a secondary structured-address lookup, not a POI replacement.
+            GeocodeQuery query=new GeocodeQuery(term,"");
+            geocodeSearch.getFromLocationNameAsyn(query);
+            TextView msg=new TextView(this);
+            msg.setText(tr("ไม่พบชื่อสถานที่ กำลังลองค้นหาที่อยู่…",
+                "No POIs found. Trying structured address…"));
+            msg.setPadding(dp(12),dp(18),dp(12),dp(18));
+            msg.setTextColor(getColor(R.color.nav_secondary));
+            resultsList.addView(msg);
+        }catch(Exception e){
+            showEmptyAddressResults();
+        }
+    }
+
+    private void showEmptyAddressResults() {
+        if(resultsList==null || searchOverlay.getVisibility()!=View.VISIBLE)return;
+        resultsList.removeAllViews();
+        TextView hint=new TextView(this);
+        hint.setText(tr("ไม่พบสถานที่หรือที่อยู่ ลองเพิ่มเขต จังหวัด หรือประเทศ",
+            "No matching places or addresses. Add city, province or country."));
+        hint.setTextColor(getColor(R.color.nav_secondary));
+        hint.setTextSize(14);
+        hint.setPadding(dp(14),dp(20),dp(14),dp(20));
+        resultsList.addView(hint);
+    }
+
+    private void renderGeocoding(GeocodeResult result,int code) {
+        if(!initialized || isFinishing() || searchOverlay.getVisibility()!=View.VISIBLE)return;
+        if(result==null || result.getGeocodeQuery()==null)return;
+        String query=result.getGeocodeQuery().getLocationName();
+        if(query==null || !query.equals(searchInput.getText().toString().trim()))return;
+        resultsList.removeAllViews();
+        if(code!=1000 || result.getGeocodeAddressList()==null ||
+            result.getGeocodeAddressList().isEmpty()) {
+            showEmptyAddressResults();
+            return;
+        }
+        int count=0;
+        for(GeocodeAddress address:result.getGeocodeAddressList()){
+            if(address==null || address.getLatLonPoint()==null)continue;
+            String title=address.getFormatAddress();
+            if(title==null || title.trim().isEmpty())title=query;
+            addResultItem(title,
+                tr("ผลค้นหาที่อยู่ · ตรวจสอบหมุดก่อนเลือก","Address match · verify location"),
+                toLatLng(address.getLatLonPoint()),false);
+            if(++count>=8)break;
+        }
+        if(count==0)showEmptyAddressResults();
+    }
+
+    private void reverseSelectedAddress(LatLng point) {
+        if(point==null)return;
+        TextView addressLine=findViewById(R.id.addressResult);
+        if(addressLine!=null){
+            addressLine.setText(tr("กำลังค้นหาที่อยู่…","Looking up address…"));
+            addressLine.setVisibility(View.VISIBLE);
+        }
+        try {
+            setupGeocodeSearch();
+            waitingReversePoint=point;
+            RegeocodeQuery req=new RegeocodeQuery(
+                new LatLonPoint(point.latitude,point.longitude),200f,GeocodeSearch.AMAP);
+            geocodeSearch.getFromLocationAsyn(req);
+        } catch(Exception e) {
+            if(addressLine!=null)addressLine.setText(
+                tr("บริการค้นหาที่อยู่ไม่พร้อม","Address lookup unavailable"));
+        }
+    }
+
+    private void renderReverseGeocoding(RegeocodeResult result,int code) {
+        if(!initialized || isFinishing() || destination==null || waitingReversePoint==null)return;
+        if(!destination.equals(waitingReversePoint))return;
+        if(result==null || result.getRegeocodeQuery()==null ||
+           result.getRegeocodeQuery().getPoint()==null)return;
+        LatLonPoint queried=result.getRegeocodeQuery().getPoint();
+        if(Math.abs(queried.getLatitude()-destination.latitude)>0.000001 ||
+           Math.abs(queried.getLongitude()-destination.longitude)>0.000001)return;
+        TextView addressLine=findViewById(R.id.addressResult);
+        if(addressLine==null)return;
+        if(code==1000 && result.getRegeocodeAddress()!=null) {
+            String formatted=result.getRegeocodeAddress().getFormatAddress();
+            if(formatted!=null && !formatted.trim().isEmpty()){
+                addressLine.setText(formatted);
+                addressLine.setVisibility(View.VISIBLE);
+                return;
+            }
+        }
+        addressLine.setText(tr("ไม่มีข้อมูลที่อยู่สำหรับพิกัดนี้",
+            "No address available for this coordinate"));
+        addressLine.setVisibility(View.VISIBLE);
+    }
+
     private void chooseDestination(LatLng point, String label) {
         clearSearchMarkers();
         destination = point;
         destinationName = label;
+        waitingReversePoint = null;
+        TextView addressLine = findViewById(R.id.addressResult);
+        if(addressLine != null) {
+            addressLine.setVisibility(View.GONE);
+            addressLine.setText("");
+        }
         driveAlternatives.clear();
         LinearLayout alternativeRows=findViewById(R.id.routeAlternatives);
         if(alternativeRows!=null)alternativeRows.removeAllViews();
