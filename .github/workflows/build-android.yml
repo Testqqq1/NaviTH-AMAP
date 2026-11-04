@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+  pull_request:
 
 permissions:
   contents: read
@@ -17,6 +18,9 @@ jobs:
 
       - name: Verify Navigation and Marker contracts
         run: python3 tools/check_navigation_contracts.py
+
+      - name: Verify Mapbox routing prototype contracts
+        run: python3 tools/check_mapbox_contracts.py
 
       - name: Install Java 17
         uses: actions/setup-java@v4
