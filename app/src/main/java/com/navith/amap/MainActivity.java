@@ -1055,6 +1055,12 @@ public final class MainActivity extends Activity implements
                 .setNegativeButton(tr("ยกเลิก","Cancel"),null).show();
             return;
         }
+        if (!MapboxDirectionsClient.configured(this) &&
+            modeGroup.getCheckedRadioButtonId()==R.id.modeCycle) {
+            showUnavailableTravelMode(tr("จักรยาน","Cycling"),
+                tr("ต้องเปิดใช้งาน Mapbox ก่อนใช้เส้นทางจักรยาน","Cycling requires Mapbox."));
+            return;
+        }
         if (!MapboxDirectionsClient.configured(this) && routeSearch == null) {
             status(tr("บริการคำนวณเส้นทางยังไม่พร้อม","Route service unavailable"));
             return;
@@ -1068,14 +1074,17 @@ public final class MainActivity extends Activity implements
             final int generation=++mapboxRouteGeneration;
             final LatLng target=destination;
             final boolean walk=modeGroup.getCheckedRadioButtonId()==R.id.modeWalk;
+            final boolean cycle=modeGroup.getCheckedRadioButtonId()==R.id.modeCycle;
+            final String profile=walk?"walking":cycle?"cycling":
+                getViewPrefs().getBoolean("avoid_traffic",true)?"driving-traffic":"driving";
             mapboxAlternatives.clear();
             selectedMapboxRoute=null;
-            MapboxDirectionsClient.request(this,myLocation,target,walk,
+            MapboxDirectionsClient.request(this,myLocation,target,profile,
                 new MapboxDirectionsClient.Callback() {
                     @Override public void success(List<MapboxDirectionsClient.Route> routes) {
                         if(isFinishing() || destination==null || !destination.equals(target)
                             || mapboxRouteGeneration!=generation)return;
-                        showMapboxRoutes(routes,walk);
+                        showMapboxRoutes(routes,walk,cycle);
                     }
                     @Override public void failure(String message) {
                         if(isFinishing() || mapboxRouteGeneration!=generation)return;
@@ -1136,9 +1145,15 @@ public final class MainActivity extends Activity implements
 
 
     
-    private void showMapboxRoutes(List<MapboxDirectionsClient.Route> routes, boolean walking) {
+    private void showMapboxRoutes(List<MapboxDirectionsClient.Route> routes, boolean walking, boolean cycling) {
         mapboxAlternatives.clear();
         mapboxAlternatives.addAll(routes);
+        String priority=getViewPrefs().getString("route_priority","recommended");
+        if("shortest".equals(priority)) {
+            mapboxAlternatives.sort((a,b)->Float.compare(a.meters,b.meters));
+        } else if("fastest".equals(priority)) {
+            mapboxAlternatives.sort((a,b)->Long.compare(a.seconds,b.seconds));
+        }
         LinearLayout container=findViewById(R.id.routeAlternatives);
         if(container==null)return;
         container.removeAllViews();
@@ -1154,17 +1169,18 @@ public final class MainActivity extends Activity implements
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setMinHeight(dp(48));
             row.setPadding(dp(12),dp(6),dp(12),dp(6));
-            row.setOnClickListener(v->displayMapboxRoute(selected,walking));
+            row.setOnClickListener(v->displayMapboxRoute(selected,walking,cycling));
             container.addView(row);
         }
-        displayMapboxRoute(0,walking);
+        displayMapboxRoute(0,walking,cycling);
     }
 
-    private void displayMapboxRoute(int index,boolean walking) {
+    private void displayMapboxRoute(int index,boolean walking,boolean cycling) {
         if(index<0||index>=mapboxAlternatives.size())return;
         selectedMapboxRoute=mapboxAlternatives.get(index);
         drawRoute(selectedMapboxRoute.geometry,selectedMapboxRoute.meters,
             selectedMapboxRoute.seconds,walking?tr("เดินเท้า · Mapbox","Walking · Mapbox"):
+                cycling?tr("จักรยาน · Mapbox","Cycling · Mapbox"):
                 tr("รถยนต์ · Mapbox","Driving · Mapbox"));
         routeSummary.setText(routeSummary.getText()+" · Powered by Mapbox");
     }
@@ -1240,7 +1256,7 @@ public final class MainActivity extends Activity implements
         hasRoutePreview=true;
         boolean canStart=(NavSdkBridge.isInstalled() ||
             (selectedMapboxRoute!=null && MapboxDirectionsClient.configured(this))) &&
-            modeGroup.getCheckedRadioButtonId()!=R.id.modeWalk;
+            modeGroup.getCheckedRadioButtonId()==R.id.modeDrive;
         findViewById(R.id.startNavigationButton).setVisibility(canStart?View.VISIBLE:View.GONE);
         Button routeAction=findViewById(R.id.routeButton);
         routeAction.setBackgroundResource(canStart?R.drawable.nav_bg_subtle:R.drawable.nav_bg_button);
@@ -2068,6 +2084,8 @@ public final class MainActivity extends Activity implements
     }
 
     private void speakMapbox(String instruction) {
+        String voice=getViewPrefs().getString("voice_style","smart");
+        if("mute".equals(voice))return;
         if(mapboxVoice!=null && instruction!=null && !instruction.isEmpty())
             mapboxVoice.speak(instruction,TextToSpeech.QUEUE_FLUSH,null,"mapbox-guidance");
     }
@@ -2081,6 +2099,9 @@ public final class MainActivity extends Activity implements
         else offRouteFixes=0;
         long now=SystemClock.elapsedRealtime();
         if(offRouteFixes>=3 && now-lastMapboxReroute>30000L) {
+            if(getViewPrefs().getBoolean("offroute_alerts",true))
+                speakMapbox(tr("ออกนอกเส้นทาง กำลังคำนวณใหม่",
+                    "Off route. Recalculating."));
             rerouteMapbox(current);
             return;
         }
@@ -2090,7 +2111,10 @@ public final class MainActivity extends Activity implements
         String instruction=step.instruction.isEmpty()?
             tr("ดำเนินต่อไปตามเส้นทาง","Continue on the route"):step.instruction;
         routeSummary.setText(instruction+" · "+Math.round(remaining)+" m · Mapbox");
-        if(remaining<=150f && lastSpokenStep!=mapboxNextStep) {
+        String voiceStyle=getViewPrefs().getString("voice_style","smart");
+        float announceAt="concise".equals(voiceStyle)?80f:
+            "detailed".equals(voiceStyle)?250f:150f;
+        if(remaining<=announceAt && lastSpokenStep!=mapboxNextStep) {
             lastSpokenStep=mapboxNextStep;
             speakMapbox(instruction);
         }
@@ -2115,7 +2139,8 @@ public final class MainActivity extends Activity implements
         final LatLng target=destination;
         routeSummary.setText(tr("ออกนอกเส้นทาง · Mapbox กำลังคำนวณใหม่…",
             "Off-route · Mapbox recalculating…"));
-        MapboxDirectionsClient.request(this,from,target,false,new MapboxDirectionsClient.Callback(){
+        String profile=getViewPrefs().getBoolean("avoid_traffic",true)?"driving-traffic":"driving";
+        MapboxDirectionsClient.request(this,from,target,profile,new MapboxDirectionsClient.Callback(){
             @Override public void success(List<MapboxDirectionsClient.Route> routes) {
                 if(!mapboxGuiding || isFinishing() || mapboxRouteGeneration!=generation ||
                    destination==null || !destination.equals(target))return;
@@ -2183,7 +2208,7 @@ public final class MainActivity extends Activity implements
         b.setVisibility((NavSdkBridge.isInstalled() ||
             (selectedMapboxRoute!=null && MapboxDirectionsClient.configured(this))) &&
             (running || hasRoutePreview) &&
-            modeGroup.getCheckedRadioButtonId()!=R.id.modeWalk ? View.VISIBLE:View.GONE);
+            modeGroup.getCheckedRadioButtonId()==R.id.modeDrive ? View.VISIBLE:View.GONE);
         b.setText(launching ? tr("กำลังเริ่มนำทาง…","Starting navigation…") :
             running ? tr("หยุดนำทาง","Stop navigation") :
             tr("เริ่มนำทาง","Start navigation"));
