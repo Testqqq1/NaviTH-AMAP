@@ -67,6 +67,15 @@ public final class SettingsActivity extends Activity {
         LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(getColor(R.color.nav_surface));
+        // Android 15/16 edge-to-edge: keep header and navigation controls out of bars.
+        if(android.os.Build.VERSION.SDK_INT>=30) {
+            root.setOnApplyWindowInsetsListener((v,insets)->{
+                android.graphics.Insets bars=insets.getInsets(
+                    android.view.WindowInsets.Type.systemBars());
+                v.setPadding(bars.left,bars.top,bars.right,bars.bottom);
+                return insets;
+            });
+        } else root.setFitsSystemWindows(true);
         setContentView(root);
         LinearLayout header=new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
@@ -232,8 +241,9 @@ public final class SettingsActivity extends Activity {
                 section(tx("ประเภทยานพาหนะ","Vehicle profile"));groupStart();
                 segmented(new String[]{tx("รถยนต์","Car"),tx("ไฟฟ้า¹","EV¹"),tx("บรรทุก¹","Truck¹"),tx("จยย.¹","Moto¹"),tx("รถบัส¹","Bus¹")},
                     "vehicle_profile",new String[]{"car","ev","truck","motorcycle","bus"},"car");
-                TextView vehicleNote=label(tx("¹ ต้องใช้ผู้ให้บริการเส้นทางที่รองรับข้อจำกัดเฉพาะรถ ไม่ใช้เส้นทางรถยนต์แทน",
-                    "¹ Requires vehicle-specific routing; car routes will not be substituted."),12,secondary,false);
+                TextView vehicleNote=label(VehicleCapabilityRegistry.availability(this),
+                    13,VehicleCapabilityRegistry.drivingSupported(this)?secondary:
+                        getColor(R.color.nav_warning),false);
                 vehicleNote.setPadding(dp(8),dp(8),dp(8),dp(2));content.addView(vehicleNote);
                 section(tx("ความชอบเส้นทาง","Route preferences"));groupStart();
                 segmented(new String[]{tx("แนะนำ","Recommended"),tx("ระยะสั้น","Shortest"),tx("เวลาสั้น","Fastest")},
@@ -392,14 +402,8 @@ public final class SettingsActivity extends Activity {
             bar.addView(chip,cp);
             chip.setClickable(true);chip.setFocusable(true);
             chip.setOnClickListener(v->{
-                if("vehicle_profile".equals(key)&& !"car".equals(value)) {
-                    new AlertDialog.Builder(this)
-                        .setTitle(tx("ยังไม่รองรับยานพาหนะนี้","Vehicle mode unavailable"))
-                        .setMessage(tx("ต้องมี API ที่คำนวณทางตามข้อจำกัดของรถประเภทนี้จริง ๆ ไม่สามารถใช้เส้นทางรถยนต์ทั่วไปทดแทนได้",
-                            "Requires a vehicle-specific routing API; car routing is not a safe substitute."))
-                        .setPositiveButton(tx("ตกลง","OK"),null).show();
-                    return;
-                }
+                // Save every legitimate selection; never substitute car routes.
+                if("vehicle_profile".equals(key))VehicleCapabilityRegistry.select(this,value);
                 SharedPreferences.Editor edit=prefs.edit().putString(key,value);
                 if("map_perspective".equals(key))edit.putBoolean("view3d","3d".equals(value));
                 edit.apply();
