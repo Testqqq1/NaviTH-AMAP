@@ -8,7 +8,7 @@
         android:layout_width="match_parent" android:layout_height="match_parent" />
 
     <!-- One compact, tappable search surface instead of a permanent large form. -->
-    <LinearLayout android:layout_width="match_parent" android:layout_height="56dp"
+    <LinearLayout android:id="@+id/topSearchBar" android:layout_width="match_parent" android:layout_height="56dp"
         android:layout_gravity="top" android:layout_marginStart="16dp"
         android:layout_marginEnd="16dp" android:layout_marginTop="12dp"
         android:background="@drawable/nav_bg_floating" android:elevation="2dp"
@@ -56,6 +56,24 @@
     <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
         android:layout_gravity="end|center_vertical"
         android:layout_marginEnd="16dp" android:orientation="vertical">
+        <LinearLayout android:id="@+id/zoomButtons"
+            android:layout_width="52dp" android:layout_height="104dp"
+            android:orientation="vertical" android:layout_marginBottom="9dp"
+            android:background="@drawable/nav_bg_white" android:elevation="3dp">
+            <TextView android:id="@+id/zoomPlusButton"
+                android:layout_width="match_parent" android:layout_height="52dp"
+                android:gravity="center" android:text="+" android:textSize="29sp"
+                android:textColor="@color/nav_text" android:clickable="true"
+                android:focusable="true" android:contentDescription="ซูมเข้า"/>
+            <View android:layout_width="match_parent" android:layout_height="1dp"
+                android:layout_marginStart="10dp" android:layout_marginEnd="10dp"
+                android:background="@color/nav_border"/>
+            <TextView android:id="@+id/zoomMinusButton"
+                android:layout_width="match_parent" android:layout_height="51dp"
+                android:gravity="center" android:text="−" android:textSize="29sp"
+                android:textColor="@color/nav_text" android:clickable="true"
+                android:focusable="true" android:contentDescription="ซูมออก"/>
+        </LinearLayout>
         <ImageView android:id="@+id/locationButton"
             android:layout_width="52dp" android:layout_height="52dp"
             android:background="@drawable/nav_bg_white" android:elevation="2dp"
@@ -71,68 +89,305 @@
             android:contentDescription="@string/layers"/>
     </LinearLayout>
 
-    <!-- Contextual journeys are separate from the map and disappear when a destination is chosen. -->
+    <!-- NaviTH's original, AMap-inspired map-first home panel. No copied assets. -->
     <LinearLayout android:id="@+id/homePanel"
         android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:layout_gravity="bottom" android:layout_margin="12dp"
-        android:paddingStart="16dp" android:paddingEnd="16dp"
-        android:paddingTop="3dp" android:paddingBottom="14dp"
-        android:orientation="vertical" android:elevation="3dp"
-        android:background="@drawable/nav_bg_sheet">
+        android:layout_gravity="bottom" android:layout_margin="8dp"
+        android:orientation="vertical" android:elevation="6dp"
+        android:paddingStart="10dp" android:paddingEnd="10dp"
+        android:paddingBottom="10dp" android:background="@drawable/nav_bg_sheet">
         <TextView android:id="@+id/homeGrabber"
-            android:layout_width="match_parent" android:layout_height="48dp"
-            android:gravity="center" android:text="━━━━" android:textSize="20sp"
+            android:layout_width="match_parent" android:layout_height="23dp"
+            android:gravity="center" android:text="━━━━" android:textSize="17sp"
             android:textColor="@color/nav_border" android:clickable="true"
             android:focusable="true" android:contentDescription="@string/home_expand"/>
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="@string/home_title" android:textSize="20sp" android:textStyle="bold"
-            android:textColor="@color/nav_text" android:paddingBottom="11dp"/>
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:orientation="horizontal">
-            <LinearLayout android:id="@+id/homeShortcut"
-                android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1"
-                android:layout_marginEnd="8dp" android:background="@drawable/nav_bg_subtle"
-                android:gravity="center" android:clickable="true" android:focusable="true"
-                android:contentDescription="@string/home_label" android:orientation="horizontal">
-                <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:src="@drawable/nav_ic_home" android:contentDescription="@null" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="@string/home_label" android:textSize="14sp"
-                    android:textColor="@color/nav_text" android:layout_marginStart="6dp" />
+        <LinearLayout android:id="@+id/homeSearchButton"
+            android:layout_width="match_parent" android:layout_height="54dp"
+            android:layout_marginStart="4dp" android:layout_marginEnd="4dp"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/nav_bg_floating"
+            android:orientation="horizontal" android:gravity="center_vertical"
+            android:clickable="true" android:focusable="true"
+            android:contentDescription="@string/search_title">
+            <ImageView android:layout_width="46dp" android:layout_height="48dp"
+                android:padding="12dp" android:src="@drawable/nav_ic_search"
+                android:contentDescription="@null"/>
+            <TextView android:layout_width="0dp" android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:text="ค้นหาสถานที่ ถนน และที่อยู่..."
+                android:textSize="16sp" android:singleLine="true" android:ellipsize="end"
+                android:textColor="@color/nav_text"/>
+            <TextView android:layout_width="44dp" android:layout_height="48dp"
+                android:gravity="center" android:text="⌕" android:textSize="25sp"
+                android:textColor="@color/nav_secondary"/>
+        </LinearLayout>
+        <HorizontalScrollView android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:fillViewport="true"
+            android:scrollbars="none">
+            <LinearLayout android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:orientation="horizontal">
+                <LinearLayout android:id="@+id/homeQuickDrive" android:layout_width="78dp"
+                    android:layout_height="83dp" android:gravity="center"
+                    android:orientation="vertical" android:clickable="true"
+                    android:focusable="true" android:contentDescription="ขับรถ">
+                    <TextView android:layout_width="52dp" android:layout_height="52dp"
+                        android:text="🚘" android:gravity="center"
+                        android:textSize="27sp" android:textColor="@color/nav_primary"
+                        android:background="@drawable/nav_bg_subtle"/>
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:gravity="center" android:layout_marginTop="5dp"
+                        android:text="ขับรถ" android:textSize="12sp"
+                        android:singleLine="true" android:ellipsize="end"
+                        android:textColor="@color/nav_text"/>
+                </LinearLayout>
+                <LinearLayout android:id="@+id/homeQuickTransit" android:layout_width="78dp"
+                    android:layout_height="83dp" android:gravity="center"
+                    android:orientation="vertical" android:clickable="true"
+                    android:focusable="true" android:contentDescription="ขนส่ง">
+                    <TextView android:layout_width="52dp" android:layout_height="52dp"
+                        android:text="🚍" android:gravity="center"
+                        android:textSize="27sp" android:textColor="@color/nav_primary"
+                        android:background="@drawable/nav_bg_subtle"/>
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:gravity="center" android:layout_marginTop="5dp"
+                        android:text="ขนส่ง" android:textSize="12sp"
+                        android:singleLine="true" android:ellipsize="end"
+                        android:textColor="@color/nav_text"/>
+                </LinearLayout>
+                <LinearLayout android:id="@+id/homeQuickRide" android:layout_width="78dp"
+                    android:layout_height="83dp" android:gravity="center"
+                    android:orientation="vertical" android:clickable="true"
+                    android:focusable="true" android:contentDescription="Ride">
+                    <TextView android:layout_width="52dp" android:layout_height="52dp"
+                        android:text="◇" android:gravity="center"
+                        android:textSize="27sp" android:textColor="@color/nav_primary"
+                        android:background="@drawable/nav_bg_subtle"/>
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:gravity="center" android:layout_marginTop="5dp"
+                        android:text="Ride" android:textSize="12sp"
+                        android:singleLine="true" android:ellipsize="end"
+                        android:textColor="@color/nav_text"/>
+                </LinearLayout>
+                <LinearLayout android:id="@+id/homeQuickWalk" android:layout_width="78dp"
+                    android:layout_height="83dp" android:gravity="center"
+                    android:orientation="vertical" android:clickable="true"
+                    android:focusable="true" android:contentDescription="เดิน">
+                    <TextView android:layout_width="52dp" android:layout_height="52dp"
+                        android:text="♙" android:gravity="center"
+                        android:textSize="27sp" android:textColor="@color/nav_primary"
+                        android:background="@drawable/nav_bg_subtle"/>
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:gravity="center" android:layout_marginTop="5dp"
+                        android:text="เดิน" android:textSize="12sp"
+                        android:singleLine="true" android:ellipsize="end"
+                        android:textColor="@color/nav_text"/>
+                </LinearLayout>
+                <LinearLayout android:id="@+id/homeQuickCycle" android:layout_width="78dp"
+                    android:layout_height="83dp" android:gravity="center"
+                    android:orientation="vertical" android:clickable="true"
+                    android:focusable="true" android:contentDescription="จักรยาน">
+                    <TextView android:layout_width="52dp" android:layout_height="52dp"
+                        android:text="🚲" android:gravity="center"
+                        android:textSize="27sp" android:textColor="@color/nav_primary"
+                        android:background="@drawable/nav_bg_subtle"/>
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:gravity="center" android:layout_marginTop="5dp"
+                        android:text="จักรยาน" android:textSize="12sp"
+                        android:singleLine="true" android:ellipsize="end"
+                        android:textColor="@color/nav_text"/>
+                </LinearLayout>
+                <LinearLayout android:id="@+id/homeQuickMoto" android:layout_width="78dp"
+                    android:layout_height="83dp" android:gravity="center"
+                    android:orientation="vertical" android:clickable="true"
+                    android:focusable="true" android:contentDescription="มอเตอร์ไซค์">
+                    <TextView android:layout_width="52dp" android:layout_height="52dp"
+                        android:text="🛵" android:gravity="center"
+                        android:textSize="27sp" android:textColor="@color/nav_primary"
+                        android:background="@drawable/nav_bg_subtle"/>
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:gravity="center" android:layout_marginTop="5dp"
+                        android:text="มอเตอร์ไซค์" android:textSize="12sp"
+                        android:singleLine="true" android:ellipsize="end"
+                        android:textColor="@color/nav_text"/>
+                </LinearLayout>
             </LinearLayout>
-            <LinearLayout android:id="@+id/workShortcut"
-                android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1"
-                android:layout_marginEnd="8dp" android:background="@drawable/nav_bg_subtle"
-                android:gravity="center" android:clickable="true" android:focusable="true"
-                android:contentDescription="@string/work_label" android:orientation="horizontal">
-                <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:src="@drawable/nav_ic_work" android:contentDescription="@null" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="@string/work_label" android:textSize="14sp"
-                    android:textColor="@color/nav_text" android:layout_marginStart="6dp" />
-            </LinearLayout>
-            <LinearLayout android:id="@+id/recentShortcut"
-                android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1"
+        </HorizontalScrollView>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="66dp"
+            android:orientation="horizontal" android:gravity="center_vertical">
+                <LinearLayout android:id="@+id/homeQuickRoute" android:layout_width="78dp"
+                    android:layout_height="65dp" android:gravity="center"
+                    android:orientation="vertical" android:clickable="true"
+                    android:focusable="true" android:contentDescription="เส้นทาง">
+                    <TextView android:layout_width="52dp" android:layout_height="37dp"
+                        android:text="⌁" android:gravity="center"
+                        android:textSize="21sp" android:textColor="@color/nav_primary"
+                        android:background="@drawable/nav_bg_subtle"/>
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:gravity="center" android:layout_marginTop="5dp"
+                        android:text="เส้นทาง" android:textSize="12sp"
+                        android:singleLine="true" android:ellipsize="end"
+                        android:textColor="@color/nav_text"/>
+                </LinearLayout>
+                <LinearLayout android:id="@+id/homeQuickPlaces" android:layout_width="78dp"
+                    android:layout_height="65dp" android:gravity="center"
+                    android:orientation="vertical" android:clickable="true"
+                    android:focusable="true" android:contentDescription="สำรวจ">
+                    <TextView android:layout_width="52dp" android:layout_height="37dp"
+                        android:text="⌖" android:gravity="center"
+                        android:textSize="21sp" android:textColor="@color/nav_primary"
+                        android:background="@drawable/nav_bg_subtle"/>
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:gravity="center" android:layout_marginTop="5dp"
+                        android:text="สำรวจ" android:textSize="12sp"
+                        android:singleLine="true" android:ellipsize="end"
+                        android:textColor="@color/nav_text"/>
+                </LinearLayout>
+                <LinearLayout android:id="@+id/homeQuickSaved" android:layout_width="78dp"
+                    android:layout_height="65dp" android:gravity="center"
+                    android:orientation="vertical" android:clickable="true"
+                    android:focusable="true" android:contentDescription="สถานที่โปรด">
+                    <TextView android:layout_width="52dp" android:layout_height="37dp"
+                        android:text="☆" android:gravity="center"
+                        android:textSize="21sp" android:textColor="@color/nav_primary"
+                        android:background="@drawable/nav_bg_subtle"/>
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:gravity="center" android:layout_marginTop="5dp"
+                        android:text="สถานที่โปรด" android:textSize="12sp"
+                        android:singleLine="true" android:ellipsize="end"
+                        android:textColor="@color/nav_text"/>
+                </LinearLayout>
+                <LinearLayout android:id="@+id/homeQuickLayers" android:layout_width="78dp"
+                    android:layout_height="65dp" android:gravity="center"
+                    android:orientation="vertical" android:clickable="true"
+                    android:focusable="true" android:contentDescription="ชั้นข้อมูล">
+                    <TextView android:layout_width="52dp" android:layout_height="37dp"
+                        android:text="◈" android:gravity="center"
+                        android:textSize="21sp" android:textColor="@color/nav_primary"
+                        android:background="@drawable/nav_bg_subtle"/>
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:gravity="center" android:layout_marginTop="5dp"
+                        android:text="ชั้นข้อมูล" android:textSize="12sp"
+                        android:singleLine="true" android:ellipsize="end"
+                        android:textColor="@color/nav_text"/>
+                </LinearLayout>
+                <LinearLayout android:id="@+id/homeQuickSettings" android:layout_width="78dp"
+                    android:layout_height="65dp" android:gravity="center"
+                    android:orientation="vertical" android:clickable="true"
+                    android:focusable="true" android:contentDescription="ตั้งค่า">
+                    <TextView android:layout_width="52dp" android:layout_height="37dp"
+                        android:text="⚙" android:gravity="center"
+                        android:textSize="21sp" android:textColor="@color/nav_primary"
+                        android:background="@drawable/nav_bg_subtle"/>
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:gravity="center" android:layout_marginTop="5dp"
+                        android:text="ตั้งค่า" android:textSize="12sp"
+                        android:singleLine="true" android:ellipsize="end"
+                        android:textColor="@color/nav_text"/>
+                </LinearLayout>
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="44dp"
+            android:orientation="horizontal" android:gravity="center_vertical"
+            android:layout_marginTop="3dp">
+            <TextView android:id="@+id/homeShortcut"
+                android:layout_width="0dp" android:layout_weight="1"
+                android:layout_height="42dp" android:gravity="center"
+                android:text="⌂  บ้าน" android:textSize="13sp"
+                android:textColor="@color/nav_text" android:clickable="true"
+                android:focusable="true" android:background="@drawable/nav_bg_subtle"
+                android:contentDescription="@string/home_label"/>
+            <TextView android:id="@+id/workShortcut"
+                android:layout_width="0dp" android:layout_weight="1"
+                android:layout_height="42dp" android:layout_marginStart="7dp"
+                android:gravity="center" android:text="▣  ที่ทำงาน"
+                android:textSize="13sp" android:textColor="@color/nav_text"
+                android:clickable="true" android:focusable="true"
                 android:background="@drawable/nav_bg_subtle"
-                android:gravity="center" android:clickable="true" android:focusable="true"
-                android:contentDescription="@string/recent_places" android:orientation="horizontal">
-                <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:src="@drawable/nav_ic_history" android:contentDescription="@null" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="@string/home_recent" android:textSize="14sp"
-                    android:textColor="@color/nav_text" android:layout_marginStart="6dp" />
-            </LinearLayout>
+                android:contentDescription="@string/work_label"/>
+            <TextView android:id="@+id/recentShortcut"
+                android:layout_width="0dp" android:layout_weight="1"
+                android:layout_height="42dp" android:layout_marginStart="7dp"
+                android:gravity="center" android:text="◷  ล่าสุด"
+                android:textSize="13sp" android:textColor="@color/nav_text"
+                android:clickable="true" android:focusable="true"
+                android:background="@drawable/nav_bg_subtle"
+                android:contentDescription="@string/recent_places"/>
         </LinearLayout>
         <LinearLayout android:id="@+id/homeExpanded"
             android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:orientation="vertical" android:layout_marginTop="12dp"
+            android:orientation="vertical" android:layout_marginTop="7dp"
             android:visibility="gone">
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:text="@string/home_recent" android:textColor="@color/nav_secondary"
-                android:textSize="14sp" android:paddingBottom="8dp"/>
+            <TextView android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:text="@string/home_recent"
+                android:textColor="@color/nav_secondary" android:padding="6dp"/>
             <LinearLayout android:id="@+id/homeRecentList"
                 android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical"/>
+        </LinearLayout>
+        <View android:layout_width="match_parent" android:layout_height="1dp"
+            android:layout_marginTop="9dp" android:layout_marginBottom="4dp"
+            android:background="@color/nav_border"/>
+        <LinearLayout android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:orientation="horizontal">
+                <LinearLayout android:id="@+id/tabHome" android:layout_width="0dp"
+                    android:layout_height="53dp" android:layout_weight="1"
+                    android:gravity="center" android:orientation="vertical"
+                    android:focusable="true" android:clickable="true"
+                    android:contentDescription="หน้าแรก">
+                    <TextView android:layout_width="match_parent" android:layout_height="29dp"
+                        android:gravity="center" android:text="▲"
+                        android:textSize="23sp" android:textColor="@color/nav_primary"/>
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:gravity="center" android:text="หน้าแรก" android:textSize="11sp"
+                        android:textColor="@color/nav_primary"/>
+                </LinearLayout>
+                <LinearLayout android:id="@+id/tabExplore" android:layout_width="0dp"
+                    android:layout_height="53dp" android:layout_weight="1"
+                    android:gravity="center" android:orientation="vertical"
+                    android:focusable="true" android:clickable="true"
+                    android:contentDescription="สำรวจ">
+                    <TextView android:layout_width="match_parent" android:layout_height="29dp"
+                        android:gravity="center" android:text="⌖"
+                        android:textSize="23sp" android:textColor="@color/nav_text"/>
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:gravity="center" android:text="สำรวจ" android:textSize="11sp"
+                        android:textColor="@color/nav_text"/>
+                </LinearLayout>
+                <LinearLayout android:id="@+id/tabTrips" android:layout_width="0dp"
+                    android:layout_height="53dp" android:layout_weight="1"
+                    android:gravity="center" android:orientation="vertical"
+                    android:focusable="true" android:clickable="true"
+                    android:contentDescription="เส้นทาง">
+                    <TextView android:layout_width="match_parent" android:layout_height="29dp"
+                        android:gravity="center" android:text="▤"
+                        android:textSize="23sp" android:textColor="@color/nav_text"/>
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:gravity="center" android:text="เส้นทาง" android:textSize="11sp"
+                        android:textColor="@color/nav_text"/>
+                </LinearLayout>
+                <LinearLayout android:id="@+id/tabSaved" android:layout_width="0dp"
+                    android:layout_height="53dp" android:layout_weight="1"
+                    android:gravity="center" android:orientation="vertical"
+                    android:focusable="true" android:clickable="true"
+                    android:contentDescription="บันทึก">
+                    <TextView android:layout_width="match_parent" android:layout_height="29dp"
+                        android:gravity="center" android:text="☆"
+                        android:textSize="23sp" android:textColor="@color/nav_text"/>
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:gravity="center" android:text="บันทึก" android:textSize="11sp"
+                        android:textColor="@color/nav_text"/>
+                </LinearLayout>
+                <LinearLayout android:id="@+id/tabMine" android:layout_width="0dp"
+                    android:layout_height="53dp" android:layout_weight="1"
+                    android:gravity="center" android:orientation="vertical"
+                    android:focusable="true" android:clickable="true"
+                    android:contentDescription="ของฉัน">
+                    <TextView android:layout_width="match_parent" android:layout_height="29dp"
+                        android:gravity="center" android:text="♙"
+                        android:textSize="23sp" android:textColor="@color/nav_text"/>
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:gravity="center" android:text="ของฉัน" android:textSize="11sp"
+                        android:textColor="@color/nav_text"/>
+                </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 
