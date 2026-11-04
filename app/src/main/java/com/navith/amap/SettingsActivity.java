@@ -60,6 +60,8 @@ public final class SettingsActivity extends Activity {
         if(bold)tv.setTypeface(null, Typeface.BOLD);
         return tv;
     }
+    private String openCategory=null;
+
     private void build() {
         LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -71,92 +73,203 @@ public final class SettingsActivity extends Activity {
         header.setPadding(dp(12),dp(8),dp(16),dp(8));
         root.addView(header,new LinearLayout.LayoutParams(-1,dp(64)));
         TextView back=label("‹",34,primary,false);
-        back.setGravity(Gravity.CENTER);back.setContentDescription(tx("ย้อนกลับ","Back"));
+        back.setGravity(Gravity.CENTER);
+        back.setContentDescription(tx("ย้อนกลับ","Back"));
         header.addView(back,new LinearLayout.LayoutParams(dp(48),dp(48)));
-        back.setOnClickListener(v->finish());
-        TextView title=label(tx("ตั้งค่า","Settings"),22,primary,true);
+        back.setOnClickListener(v->navigateBack());
+        TextView title=label(openCategory==null?tx("ตั้งค่า","Settings"):categoryTitle(openCategory),
+            22,primary,true);
         LinearLayout.LayoutParams titleLp=new LinearLayout.LayoutParams(0,-2,1f);
-        titleLp.leftMargin=dp(8);header.addView(title,titleLp);
+        titleLp.leftMargin=dp(8);
+        header.addView(title,titleLp);
         TextView brand=label("NaviTH Maps",12,secondary,false);
         header.addView(brand);
-        ScrollView scroll=new ScrollView(this);
-        scroll.setFillViewport(true);
+        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1f));
         content=new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(16),dp(12),dp(16),dp(32));
+        content.setPadding(dp(16),dp(14),dp(16),dp(32));
         scroll.addView(content);
-        section(tx("การแสดงผล","Appearance"));
-        groupStart();
-        line(tx("มุมมองแผนที่","Map view"),tx("2D หรือ 3D","2D or 3D"),
-            prefs.getBoolean("view3d",true)?"3D":"2D",()->pickMode());
-        line(tx("ธีม","Theme"),tx("ตามเวลาหรือเลือกเอง","Automatic or manual"),
-            themeName(),()->chooseTheme());
-        line(tx("ซูมเริ่มต้น","Default zoom"),tx("ใช้เมื่อกดตำแหน่งของฉัน","Used when locating"),
-            String.format(Locale.US,"%.0f",prefs.getFloat("zoom",16f)),()->pickZoom());
-        section(tx("ชั้นข้อมูลแผนที่","Map layers"));
-        groupStart();
-        toggle(tx("แสดงชื่อสถานที่","Base map labels"),
-            tx("ซ่อนเพื่อให้เส้นทางอ่านง่ายขึ้น","Hide for a quieter map"),"labels",false);
-        toggle(tx("การจราจรสด","Live traffic"),
-            tx("ขึ้นกับข้อมูลพื้นที่ของ AMAP","AMAP regional coverage varies"),"traffic",true);
-        toggle(tx("อาคาร 3D","3D buildings"),tx("ขึ้นกับข้อมูลและระดับซูม","Depends on map coverage and zoom"),
-            "buildings",true);
-        line(tx("ประเภทแผนที่","Map type"),tx("มาตรฐาน / ดาวเทียม","Normal / satellite"),
-            "satellite".equals(prefs.getString("theme","auto"))?tx("ดาวเทียม","Satellite"):tx("มาตรฐาน","Normal"),()->chooseTheme());
-        section(tx("การวางเส้นทาง","Route planning"));
-        groupStart();
-        toggle(tx("เลี่ยงค่าผ่านทาง","Avoid tolls"),null,"avoid_tolls",false);
-        toggle(tx("เลี่ยงทางด่วน","Avoid highways"),null,"avoid_highway",false);
-        toggle(tx("เลี่ยงรถติด","Avoid congestion"),tx("เมื่อ AMAP มีข้อมูล","When AMAP data is available"),
-            "avoid_traffic",true);
-        line(tx("หน่วยความเร็ว","Speed units"),null,
-            prefs.getBoolean("mph",false)?"mph":"km/h",
-            ()->{prefs.edit().putBoolean("mph",!prefs.getBoolean("mph",false)).apply();build();});
-        section(tx("ตำแหน่งและความเป็นส่วนตัว","Location & privacy"));
-        groupStart();
-        toggle(tx("แสดงตำแหน่งของฉัน","Show my location"),
-            tx("ซ่อนสัญลักษณ์เท่านั้น ไม่ปิด GPS","Hide map marker; GPS remains enabled"),
-            "show_location",true);
-        line(tx("จุดจอดรถล่าสุด","Last parking position"),tx("พิกัดเมื่อสิ้นสุดการเชื่อมต่อจอรถ","Last connected car position"),"›",()->parking());
-        section(tx("ภาษาและการเข้าถึง","Language & accessibility"));
-        groupStart();
-        line(tx("ภาษาแอป","App language"),tx("ชื่อสถานที่ขึ้นกับข้อมูลแผนที่","Map labels depend on provider"),
-            NaviLocale.thai(this)?"ไทย":"English",()->chooseLanguage());
-        section(tx("บริการค้นหาสำรอง","External search service"));
-        groupStart();
-        line(tx("เชื่อมต่อ AMAP MCP","Connect AMAP MCP"),
-            tx("ค้นหาสำรองผ่าน HTTPS เมื่อ Native SDK ไม่พบข้อมูล",
-               "HTTPS fallback only when Native SDK returns no places"),
-            McpPlacesClient.isConfigured(this)?tx("เชื่อมต่อพร้อมใช้งาน","Configured"):
-                tx("ยังไม่ตั้งค่า","Not configured"), ()->configureMcp());
-        section(tx("แผนที่ออฟไลน์","Offline maps"));
-        groupStart();
-        line(tx("เมืองที่ดาวน์โหลดได้","Available city maps"),
-            tx("ดูข้อมูลที่ AMAP อนุญาตให้บัญชีนี้ใช้งาน ไม่รวมการนำทางออฟไลน์",
-                "Provider/account availability; offline routing is NOT included"),
-            "›",()->startActivity(new Intent(this,OfflineMapsActivity.class)));
-        section(tx("ขั้นสูง","Advanced"));
-        groupStart();
-        line(tx("โมเดลตำแหน่ง","Position marker"),
-            tx("รถ / ลูกศร / รูปส่วนตัว (2D)","Car / arrow / personal image (2D)"),"›",
-            ()->chooseMarker());
-        line(tx("นำเข้า AMAP Map Style","Import AMAP map style"),
-            tx("ใช้ ZIP ที่เผยแพร่จาก AMAP Console","Use official offline style ZIP"),
-            MapStyleImporter.installed(this)?tx("ติดตั้งแล้ว","Installed"):"›",
-            ()->chooseStyleImport());
-        line(tx("รายละเอียดการรองรับ","Feature availability"),
-            tx("ดูขีดจำกัดของ Android Auto และ AMAP","Android Auto & AMAP capabilities"),"›",
-            ()->new AlertDialog.Builder(this).setTitle(tx("สถานะ NaviTH","NaviTH status"))
-                .setMessage(tx("การนำทางเลี้ยวต่อเลี้ยว, แผนที่ออฟไลน์หลายประเทศ, ระบบเตือนเลน, กล้องจับความเร็ว, EV routing และรายงานเหตุการณ์ ยังไม่มีใน SDK ชุดนี้\n\nหน้าจอรถเป็นเพียงแผนที่และตัวอย่างเส้นทาง จึงไม่ใช่ระบบนำทางจริง",
-                    "Turn-by-turn navigation, multi-country offline routing, lane guidance, safety cameras, EV routing and incident reporting are not yet available. Android Auto provides a map and route preview only."))
-                .setPositiveButton(tx("เข้าใจแล้ว","OK"),null).show());
-        TextView note=label(tx("NaviTH Maps • แผนที่โดย AMAP","NaviTH Maps • Powered by AMAP"),12,secondary,false);
-        note.setGravity(Gravity.CENTER);note.setPadding(0,dp(18),0,dp(12));
+        if(openCategory==null) {
+            TextView hint=label(tx("ปรับแต่งตามการเดินทางของคุณ",
+                "Make NaviTH work for your journey"),14,secondary,false);
+            hint.setPadding(dp(8),dp(2),dp(8),dp(16));
+            content.addView(hint);
+            hubCard("map",tx("แผนที่และการแสดงผล","Map & appearance"),
+                tx("มุมมอง · ชั้นข้อมูล · ธีม","View · Layers · Theme"),"◈");
+            hubCard("navigation",tx("การนำทาง","Navigation"),
+                tx("ประเภทเส้นทาง · ความเร็ว · เสียง","Route preferences · Speed · Voice"),"➤");
+            hubCard("offline",tx("แผนที่ออฟไลน์","Offline maps"),
+                tx("ดาวน์โหลดพื้นที่ · จัดการข้อมูล","Download areas · Manage data"),"⇩");
+            hubCard("privacy",tx("ความเป็นส่วนตัวและตำแหน่ง","Location & privacy"),
+                tx("สิทธิ์ตำแหน่ง · สถานที่ที่บันทึก","Permissions · Saved places"),"◎");
+            hubCard("advanced",tx("ขั้นสูงและนักพัฒนา","Advanced & developer"),
+                tx("AMAP MCP · Map Style · การวินิจฉัย","AMAP MCP · Map Style · Diagnostics"),"⚙");
+        } else {
+            renderCategory(openCategory);
+        }
+        TextView note=label(tx("NaviTH Maps • แผนที่โดย AMAP",
+            "NaviTH Maps • Powered by AMAP"),12,secondary,false);
+        note.setGravity(Gravity.CENTER);
+        note.setPadding(0,dp(20),0,dp(12));
         content.addView(note);
     }
+
+    private String categoryTitle(String name) {
+        switch(name) {
+            case "map": return tx("แผนที่และการแสดงผล","Map & appearance");
+            case "navigation": return tx("การนำทาง","Navigation");
+            case "offline": return tx("แผนที่ออฟไลน์","Offline maps");
+            case "privacy": return tx("ความเป็นส่วนตัวและตำแหน่ง","Location & privacy");
+            case "advanced": return tx("ขั้นสูงและนักพัฒนา","Advanced & developer");
+            default: return tx("ตั้งค่า","Settings");
+        }
+    }
+    private void navigateBack() {
+        if(openCategory!=null) {openCategory=null;build();}
+        else finish();
+    }
+    @Override public void onBackPressed() {
+        if(openCategory!=null){openCategory=null;build();return;}
+        super.onBackPressed();
+    }
+
+    private void hubCard(String key,String title,String description,String symbol) {
+        LinearLayout row=new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(14),dp(12),dp(14),dp(12));
+        row.setMinimumHeight(dp(84));
+        row.setBackground(surface(getColor(R.color.nav_card),20));
+        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);
+        params.bottomMargin=dp(10);content.addView(row,params);
+        TextView symbolView=label(symbol,25,accent,true);
+        symbolView.setGravity(Gravity.CENTER);
+        symbolView.setBackground(surface(getColor(R.color.nav_soft_accent),14));
+        row.addView(symbolView,new LinearLayout.LayoutParams(dp(52),dp(52)));
+        LinearLayout labels=new LinearLayout(this);labels.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams labelParams=new LinearLayout.LayoutParams(0,-2,1f);
+        labelParams.leftMargin=dp(14);row.addView(labels,labelParams);
+        labels.addView(label(title,16,primary,true));
+        TextView desc=label(description,14,secondary,false);
+        desc.setPadding(0,dp(3),0,0);labels.addView(desc);
+        TextView arrow=label("›",25,secondary,false);arrow.setGravity(Gravity.CENTER);
+        row.addView(arrow,new LinearLayout.LayoutParams(dp(30),dp(48)));
+        row.setClickable(true);row.setFocusable(true);
+        row.setContentDescription(title+". "+description);
+        row.setOnClickListener(v->{openCategory=key;build();});
+    }
+
+    private void renderCategory(String key) {
+        switch(key) {
+            case "map":
+                section(tx("รูปแบบแผนที่","Map appearance"));groupStart();
+                line(tx("มุมมองแผนที่","Map view"),null,
+                    prefs.getBoolean("view3d",true)?"3D":"2D",()->pickMode());
+                line(tx("ธีมแผนที่","Map theme"),null,themeName(),()->chooseTheme());
+                line(tx("ประเภทแผนที่","Map type"),null,
+                    "satellite".equals(prefs.getString("theme","auto"))?
+                    tx("ดาวเทียม","Satellite"):tx("มาตรฐาน","Normal"),()->chooseTheme());
+                section(tx("ชั้นข้อมูล","Layers"));groupStart();
+                toggle(tx("แสดงชื่อสถานที่","Map labels"),
+                    tx("ขึ้นอยู่กับข้อมูลของ AMAP","Depends on AMAP map data"),"labels",true);
+                toggle(tx("การจราจรสด","Live traffic"),
+                    tx("เมื่อ AMAP มีข้อมูลในพื้นที่","Where AMAP provides coverage"),"traffic",true);
+                toggle(tx("อาคาร 3D","3D buildings"),null,"buildings",true);
+                line(tx("สัญลักษณ์ตำแหน่ง","Position icon"),null,"›",()->chooseMarker());
+                break;
+            case "navigation":
+                section(tx("การวางเส้นทาง","Route preferences"));groupStart();
+                toggle(tx("หลีกเลี่ยงค่าผ่านทาง","Avoid tolls"),null,"avoid_tolls",false);
+                toggle(tx("หลีกเลี่ยงทางด่วน","Avoid highways"),null,"avoid_highway",false);
+                toggle(tx("หลีกเลี่ยงรถติด","Avoid congestion"),
+                    tx("เมื่อผู้ให้บริการรองรับ","When supported by provider"),"avoid_traffic",true);
+                line(tx("หน่วยความเร็ว","Speed units"),null,
+                    prefs.getBoolean("mph",false)?"mph":"km/h",
+                    ()->{prefs.edit().putBoolean("mph",!prefs.getBoolean("mph",false)).apply();build();});
+                section(tx("เสียงและการนำทางจริง","Voice & guidance"));groupStart();
+                line(tx("สถานะระบบนำทาง","Navigation availability"),
+                    tx("การนำทางจริงต้องใช้ Navigation Test SDK",
+                       "Turn-by-turn requires the Navigation Test SDK"),
+                    NavSdkBridge.isInstalled()?tx("รุ่นทดลอง","Test only"):tx("ดูเส้นทาง","Preview"),
+                    ()->showNavigationDetails());
+                break;
+            case "offline":
+                section(tx("พื้นที่ดาวน์โหลด","Download areas"));groupStart();
+                line(tx("จัดการแผนที่ออฟไลน์","Manage offline maps"),
+                    tx("รายการเมืองขึ้นกับสิทธิ์ AMAP ไม่รวมการนำทางออฟไลน์",
+                       "City availability depends on AMAP; no offline routing"),
+                    "›",()->startActivity(new Intent(this,OfflineMapsActivity.class)));
+                break;
+            case "privacy":
+                section(tx("การอนุญาตและตำแหน่ง","Permissions & location"));groupStart();
+                line(tx("สิทธิ์ตำแหน่ง","Location permission"),
+                    tx("เปลี่ยนได้ในการตั้งค่า Android","Manage in Android settings"),
+                    "›",()->openAppPermissions());
+                toggle(tx("แสดงตำแหน่งของฉัน","Show my location"),
+                    tx("ปิดเฉพาะสัญลักษณ์ ไม่ได้ปิด GPS","Hides marker only; does not stop GPS"),
+                    "show_location",true);
+                line(tx("ตำแหน่งจอดล่าสุด","Last parking position"),
+                    tx("พิกัดสุดท้ายที่จอรถเชื่อมต่อ","Last connected car position"),
+                    "›",()->parking());
+                section(tx("ข้อมูลในเครื่อง","On-device history"));groupStart();
+                line(tx("ล้างสถานที่ล่าสุด","Clear recent places"),
+                    tx("ไม่ลบรายการโปรดหรือบ้าน/ที่ทำงาน","Keeps favorites, Home and Work"),
+                    "›",()->clearRecentHistory());
+                line(tx("ภาษาแอป","App language"),null,
+                    NaviLocale.thai(this)?"ไทย":"English",()->chooseLanguage());
+                break;
+            case "advanced":
+                section(tx("เครื่องมือสำหรับนักพัฒนา","Developer tools"));groupStart();
+                line(tx("AMAP MCP","AMAP MCP"),tx("ค้นหาสำรองผ่านเซิร์ฟเวอร์ HTTPS",
+                    "Optional HTTPS search fallback"),
+                    McpPlacesClient.isConfigured(this)?tx("ตั้งค่าแล้ว","Configured"):
+                    tx("ยังไม่ตั้งค่า","Not configured"),()->configureMcp());
+                line(tx("AMAP Map Style","AMAP Map Style"),
+                    tx("นำเข้าสไตล์จาก AMAP Console","Import from AMAP Console"),
+                    MapStyleImporter.installed(this)?tx("ติดตั้งแล้ว","Installed"):"›",
+                    ()->chooseStyleImport());
+                section(tx("การแสดงผลขั้นสูง","Advanced appearance"));groupStart();
+                line(tx("ซูมเริ่มต้น","Default zoom"),null,
+                    String.format(Locale.US,"%.0f",prefs.getFloat("zoom",16f)),()->pickZoom());
+                line(tx("ข้อมูลระบบ","System diagnostics"),
+                    tx("เวอร์ชัน SDK และข้อจำกัด","SDK availability and limits"),
+                    "›",()->showNavigationDetails());
+                break;
+            default: break;
+        }
+    }
+
+    private void openAppPermissions() {
+        Intent settings=new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+        settings.setData(android.net.Uri.fromParts("package",getPackageName(),null));
+        startActivity(settings);
+    }
+    private void clearRecentHistory() {
+        new AlertDialog.Builder(this)
+            .setTitle(tx("ล้างสถานที่ล่าสุด?","Clear recent places?"))
+            .setMessage(tx("ลบเฉพาะประวัติการค้นหาที่บันทึกในเครื่อง ไม่ลบสถานที่โปรดหรือบ้าน/ที่ทำงาน",
+                "Only locally saved recent destinations will be cleared. Favorites, Home and Work remain."))
+            .setNegativeButton(tx("ยกเลิก","Cancel"),null)
+            .setPositiveButton(tx("ล้าง","Clear"),(d,w)->{
+                getSharedPreferences("navith_places",MODE_PRIVATE).edit()
+                    .remove("recents").apply();
+                Toast.makeText(this,tx("ล้างรายการล่าสุดแล้ว","Recent places cleared"),
+                    Toast.LENGTH_SHORT).show();
+            }).show();
+    }
+    private void showNavigationDetails() {
+        new AlertDialog.Builder(this)
+            .setTitle(tx("สถานะระบบ NaviTH","NaviTH capabilities"))
+            .setMessage(NavSdkBridge.isInstalled() ?
+                tx("APK นี้มี AMAP Navigation SDK รุ่นทดลอง แต่ต้องทดสอบสิทธิ์ API Key, เสียงและข้อมูลถนนในประเทศไทยก่อนใช้จริง\n\nAndroid Auto ยังอยู่ระหว่างทดสอบและไม่ใช่รุ่น Production",
+                   "This APK includes experimental AMAP Navigation. Verify API rights, voice and road coverage in your region. Android Auto is not production-ready.") :
+                tx("รุ่นนี้รองรับแผนที่ ค้นหา และดูเส้นทางเท่านั้น การนำทางเลี้ยวต่อเลี้ยวต้องใช้ APK Navigation Test แยกต่างหาก\n\nAndroid Auto ยังเป็นรุ่นทดลอง",
+                   "This build supports maps, search and route preview only. Turn-by-turn requires the separate Navigation Test APK. Android Auto remains experimental."))
+            .setPositiveButton(tx("เข้าใจแล้ว","OK"),null).show();
+    }
+
     private void section(String s) {
-        TextView title=label(s,14,accent,true);
+        TextView title=label(s,16,accent,true);
         title.setPadding(dp(8),dp(20),0,dp(9));
         content.addView(title);
     }
@@ -174,12 +287,12 @@ public final class SettingsActivity extends Activity {
         row.setMinimumHeight(dp(64));
         LinearLayout left=new LinearLayout(this);left.setOrientation(LinearLayout.VERTICAL);
         row.addView(left,new LinearLayout.LayoutParams(0,-2,1f));
-        left.addView(label(title,16,primary,true));
+        left.addView(label(title,16,primary,false));
         if(subtitle!=null) {
-            TextView small=label(subtitle,12,secondary,false);small.setPadding(0,dp(2),0,0);
+            TextView small=label(subtitle,14,secondary,false);small.setPadding(0,dp(2),0,0);
             left.addView(small);
         }
-        TextView v=label(value+"  ›",13,secondary,false);
+        TextView v=label(value==null?"›":(value.equals("›")?"›":value+"  ›"),14,secondary,false);
         v.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);
         row.addView(v);row.setOnClickListener(w->action.run());
         row.setFocusable(true);row.setContentDescription(title+" "+value);
@@ -191,7 +304,7 @@ public final class SettingsActivity extends Activity {
         LinearLayout left=new LinearLayout(this);left.setOrientation(LinearLayout.VERTICAL);
         row.addView(left,new LinearLayout.LayoutParams(0,-2,1f));
         left.addView(label(title,16,primary,true));
-        if(subtitle!=null)left.addView(label(subtitle,12,secondary,false));
+        if(subtitle!=null)left.addView(label(subtitle,14,secondary,false));
         Switch sw=new Switch(this);sw.setButtonTintList(null);
         sw.setChecked(prefs.getBoolean(key,def));
         sw.setOnCheckedChangeListener((b,c)->prefs.edit().putBoolean(key,c).apply());
@@ -202,6 +315,7 @@ public final class SettingsActivity extends Activity {
     private void divider() {
         View line=new View(this);line.setBackgroundColor(getColor(R.color.nav_border));
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(1));
+        line.setAlpha(.32f);
         lastGroup.addView(line,lp);
     }
     private String themeName() {
