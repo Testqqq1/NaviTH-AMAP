@@ -90,10 +90,16 @@ public final class NavSdkBridge {
             Uri.parse("google.navigation:q="+coords+"&mode="+mode));
         google.setPackage("com.google.android.apps.maps");
         try {
-            if(google.resolveActivity(activity.getPackageManager())!=null) {
-                activity.startActivity(google);
-                return;
-            }
+            // Launch directly: resolveActivity can falsely report no handler on
+            // Android 11+ when package visibility is restricted.
+            activity.startActivity(google);
+            return;
+        } catch(android.content.ActivityNotFoundException mapsMissing) {
+            Log.i("NaviTH/Navigation","Google Maps absent; using web directions");
+        } catch(Exception launchFailure) {
+            Log.w("NaviTH/Navigation","Google Maps could not open",launchFailure);
+        }
+        try {
             // A browser can still show directions when Google Maps is absent.
             Uri web=Uri.parse("https://www.google.com/maps/dir/?api=1&destination="+
                 Uri.encode(coords)+"&travelmode="+(walk?"walking":"driving"));
