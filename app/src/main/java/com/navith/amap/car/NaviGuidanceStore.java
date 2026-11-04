@@ -44,7 +44,12 @@ public final class NaviGuidanceStore {
         phase(c,"navigating",true,"เริ่มนำทางด้วย GPS");
     }
     public static void rerouting(Context c) {
-        if(isNavigating(c))phase(c,"rerouting",true,"กำลังคำนวณเส้นทางใหม่");
+        if(!isNavigating(c))return;
+        // Never leave the former turn on Android Auto while SDK recalculates.
+        prefs(c).edit().remove("navi_road").remove("navi_next_m")
+            .remove("navi_left_m").remove("navi_left_s")
+            .putLong("navi_updated",0L).apply();
+        phase(c,"rerouting",true,"กำลังคำนวณเส้นทางใหม่");
     }
     public static void arrived(Context c) {
         phase(c,"arrived",false,"ถึงจุดหมายแล้ว");
