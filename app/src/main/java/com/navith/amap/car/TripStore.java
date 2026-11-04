@@ -47,8 +47,13 @@ public final class TripStore {
             .putString("lat",Double.toString(fix.getLatitude()))
             .putString("lon",Double.toString(fix.getLongitude()))
             .putLong("location_time",System.currentTimeMillis());
+        if(fix.hasAccuracy() && fix.getAccuracy()>0f &&
+            Float.isFinite(fix.getAccuracy())) {
+            e.putFloat("location_accuracy",fix.getAccuracy())
+             .putLong("location_accuracy_time",System.currentTimeMillis());
+        }
         // Only use a bearing if Android supplied a moving GPS fix.
-        if(fix.hasBearing() && fix.hasSpeed() && fix.getSpeed()>2.5f &&
+        if(fix.hasBearing() && fix.hasSpeed() && fix.getSpeed()>1.5f &&
                 Float.isFinite(fix.getBearing())) {
             e.putFloat("heading_degrees",fix.getBearing())
              .putLong("heading_time",System.currentTimeMillis());
@@ -61,6 +66,19 @@ public final class TripStore {
         long age=System.currentTimeMillis()-p.getLong("heading_time",0);
         if(age<0 || age>10000)return -1f;
         return p.getFloat("heading_degrees",-1f);
+    }
+
+    /** Negative value means no trustworthy recent accuracy measurement. */
+    public static float accuracy(Context c) {
+        SharedPreferences p=prefs(c);
+        long age=System.currentTimeMillis()-p.getLong("location_accuracy_time",0L);
+        if(age<0||age>15000L)return -1f;
+        return p.getFloat("location_accuracy",-1f);
+    }
+
+    public static boolean hasFreshNavigationLocation(Context c) {
+        long age=System.currentTimeMillis()-prefs(c).getLong("location_time",0L);
+        return location(c)!=null && age>=0 && age<=15000L;
     }
 
     public static boolean hasRecentLocation(Context c) {
