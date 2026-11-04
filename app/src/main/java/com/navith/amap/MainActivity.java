@@ -128,6 +128,7 @@ public final class MainActivity extends Activity implements
     private TextView speedText;
     private LatLng destination;
     private String destinationName = "";
+    private String destinationPoiId = null;
     private Marker destinationMarker;
     private Marker myMarker;
     private Circle accuracyRing;
@@ -330,7 +331,7 @@ public final class MainActivity extends Activity implements
                 NavSdkBridge.stopNavigation(this);
                 refreshNavigationAction();
             } else if(hasRoutePreview && destination!=null && NavSdkBridge.isInstalled()) {
-                NavSdkBridge.openRoute(this,destination,destinationName);
+                NavSdkBridge.openRoute(this,destination,destinationName,destinationPoiId);
             } else status(tr("คำนวณเส้นทางก่อนเริ่มนำทาง",
                 "Calculate a route before starting navigation"));
         });
@@ -682,10 +683,15 @@ public final class MainActivity extends Activity implements
     }
 
     private void addResultRow(PoiItem item) {
-        addResultItem(item.getTitle(),item.getSnippet(),toLatLng(item.getLatLonPoint()),false);
+        addResultItem(item.getTitle(),item.getSnippet(),
+            toLatLng(item.getLatLonPoint()),false,item.getPoiId());
     }
 
     private void addResultItem(String name,String description,LatLng position,boolean favorite) {
+        addResultItem(name,description,position,favorite,null);
+    }
+    private void addResultItem(String name,String description,LatLng position,
+                               boolean favorite,String poiId) {
         LinearLayout row=new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(12),dp(6),dp(10),dp(6));
@@ -708,7 +714,7 @@ public final class MainActivity extends Activity implements
             sub.setMaxLines(2);sub.setEllipsize(TextUtils.TruncateAt.END);
             labels.addView(sub);
         }
-        row.setOnClickListener(v->chooseDestination(position,name));
+        row.setOnClickListener(v->chooseDestination(position,name,poiId));
         resultsList.addView(row);
         View divider=new View(this);
         divider.setBackgroundColor(getColor(R.color.nav_border));
@@ -869,6 +875,10 @@ public final class MainActivity extends Activity implements
     }
 
     private void chooseDestination(LatLng point, String label) {
+        chooseDestination(point,label,null);
+    }
+    private void chooseDestination(LatLng point, String label, String poiId) {
+        destinationPoiId=(poiId==null||poiId.trim().isEmpty())?null:poiId.trim();
         clearSearchMarkers();
         destination = point;
         destinationName = label;
@@ -1079,6 +1089,7 @@ public final class MainActivity extends Activity implements
         clearRouteLine();
         destination = null;
         destinationName = "";
+        destinationPoiId = null;
         searchPoiResults.clear();
         clearSearchMarkers();
         TripStore.clearDestination(this);
