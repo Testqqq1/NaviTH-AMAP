@@ -172,37 +172,36 @@ public final class MainActivity extends Activity implements
 
     private void showPrivacyConsent(Bundle state) {
         new AlertDialog.Builder(this)
-                .setTitle("ขอความยินยอมใช้บริการแผนที่")
-                .setMessage("NaviTH ใช้ AMAP Maps, Search และ Location SDK ของผู้ให้บริการภายนอก " +
-                        "เพื่อแสดงแผนที่ ค้นหาสถานที่ และคำนวณเส้นทาง ข้อมูลอุปกรณ์/เครือข่าย " +
-                        "และตำแหน่งอาจถูกส่งให้ AMAP ตามการใช้งานบริการ\n\n" +
-                        "ตำแหน่งจะขออนุญาตจาก Android แยกอีกครั้ง ใช้เฉพาะขณะเปิดแอป " +
-                        "และไม่ขอสิทธิ์ตำแหน่งเบื้องหลัง\n\n" +
-                        "อ่านรายละเอียดเพิ่มเติมได้ในเอกสาร PRIVACY.md และนโยบายของ AMAP " +
-                        "(mapsplatform.opnavi.com) ก่อนยอมรับ")
-                .setCancelable(false)
-                .setPositiveButton("ยอมรับและเปิดแผนที่", (d, w) -> {
-                    getSharedPreferences("navith_consent", MODE_PRIVATE).edit().putBoolean(CONSENT_PREFS, true).apply();
-                    initializeApp(state);
-                })
-                .setNegativeButton("ไม่ยอมรับ", (d, w) -> showDeclinedScreen(state))
-                .show();
+            .setTitle(tr("ขอความยินยอมใช้แผนที่","Map service privacy consent"))
+            .setMessage(tr(
+                "NaviTH ใช้ AMAP Maps, Search และ Location SDK ของผู้ให้บริการภายนอก เพื่อแสดงแผนที่ ค้นหาสถานที่ และคำนวณเส้นทาง ข้อมูลอุปกรณ์ เครือข่าย และตำแหน่งอาจถูกส่งให้ AMAP ตามการใช้บริการ\n\nแอปจะขอสิทธิ์ตำแหน่งของ Android แยกต่างหาก ใช้เฉพาะขณะเปิดแอป ไม่ขอตำแหน่งเบื้องหลัง\n\nอ่าน PRIVACY.md และนโยบายที่ mapsplatform.opnavi.com ก่อนยอมรับ",
+                "NaviTH uses third-party AMAP Maps, Search and Location SDKs to display maps, find places and preview routes. Device, network and location data may be sent to AMAP as part of these services.\n\nAndroid location permission is requested separately. The app uses location only while in the foreground and does not request background location.\n\nPlease review PRIVACY.md and the AMAP privacy policy at mapsplatform.opnavi.com before accepting."
+            ))
+            .setCancelable(false)
+            .setPositiveButton(tr("ยอมรับและเปิดแผนที่","Accept and open map"),(d,w)->{
+                getSharedPreferences("navith_consent",MODE_PRIVATE).edit()
+                    .putBoolean(CONSENT_PREFS,true).apply();
+                initializeApp(state);
+            })
+            .setNegativeButton(tr("ไม่ยอมรับ","Decline"),(d,w)->showDeclinedScreen(state))
+            .show();
     }
-
     private void showDeclinedScreen(Bundle state) {
-        LinearLayout root = new LinearLayout(this);
+        LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
-        root.setPadding(dp(28), dp(28), dp(28), dp(28));
-        TextView label = new TextView(this);
-        label.setText("NaviTH\n\nคุณยังไม่ได้อนุญาตให้ใช้ AMAP SDK\nแผนที่จะไม่เริ่มทำงานจนกว่าจะยอมรับ");
+        root.setBackgroundColor(getColor(R.color.nav_card));
+        root.setPadding(dp(28),dp(28),dp(28),dp(28));
+        TextView label=new TextView(this);
+        label.setText(tr("NaviTH Maps\n\nคุณยังไม่ได้ยินยอมให้ใช้ AMAP SDK\nต้องยอมรับก่อนเปิดแผนที่",
+            "NaviTH Maps\n\nAMAP SDK consent is required before the map can be opened"));
         label.setTextSize(18);
-        label.setTextColor(Color.rgb(10, 48, 53));
+        label.setTextColor(getColor(R.color.nav_text));
         label.setGravity(Gravity.CENTER);
         root.addView(label);
-        Button retry = new Button(this);
-        retry.setText("ดูรายละเอียดอีกครั้ง");
-        retry.setOnClickListener(v -> showPrivacyConsent(state));
+        Button retry=new Button(this);
+        retry.setText(tr("อ่านรายละเอียดอีกครั้ง","Review privacy details"));
+        retry.setOnClickListener(v->showPrivacyConsent(state));
         root.addView(retry);
         setContentView(root);
     }
