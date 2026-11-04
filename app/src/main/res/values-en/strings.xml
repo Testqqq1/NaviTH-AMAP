@@ -44,7 +44,7 @@
     <string name="home_recent">Recent</string>
     <string name="home_set">Save as Home</string>
     <string name="work_set">Save as Work</string>
-    <string name="home_no_place">This shortcut isn't set. Choose a destination, then save it from route details.</string>
+    <string name="home_no_place">This shortcut is not set. Choose a destination, then save it from route details.</string>
     <string name="search_network_error">Search failed. Check your connection and retry.</string>
     <string name="voice_not_available">No voice recognition service is available</string>
     <string name="gps_accuracy">Location accuracy is low</string>
