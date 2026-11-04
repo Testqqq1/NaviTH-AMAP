@@ -53,6 +53,7 @@ import com.amap.api.maps.MapView;
 import com.amap.api.maps.MapsInitializer;
 import com.amap.api.maps.model.BitmapDescriptorFactory;
 import com.amap.api.maps.model.BitmapDescriptor;
+import com.navith.amap.NavigationMarkerFactory;
 import com.amap.api.maps.model.LatLng;
 import com.amap.api.maps.model.LatLngBounds;
 import com.amap.api.maps.model.Marker;
@@ -105,13 +106,20 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         super(c);
         prefs=TripStore.prefs(c);
         viewPrefs=c.getSharedPreferences("navith_view",Context.MODE_PRIVATE);
-        viewChanges=(sp,key)->new Handler(Looper.getMainLooper()).post(this::applyCarMapStyle);
+        viewChanges=(sp,key)->new Handler(Looper.getMainLooper()).post(()->{
+            if("vehicle_icon".equals(key) || "marker_perspective".equals(key)){
+                carArrowIcon=null;
+                if(carLocationMarker!=null)carLocationMarker.setIcon(carMarkerIcon());
+            }
+            applyCarMapStyle();
+        });
         viewPrefs.registerOnSharedPreferenceChangeListener(viewChanges);
         changes=(shared,key) -> {
             if (TripStore.DESTINATION.equals(key) || TripStore.ROUTE.equals(key) || TripStore.LOCATION.equals(key) || NaviGuidanceStore.EVENT.equals(key)) {
                 new Handler(Looper.getMainLooper()).post(() -> {
-                    if (TripStore.LOCATION.equals(key)) updateLocationMarker();
-                    else if (!NaviGuidanceStore.EVENT.equals(key)) updateMap();
+                    if (TripStore.LOCATION.equals(key) ||
+                        NaviGuidanceStore.EVENT.equals(key)) updateLocationMarker();
+                    else updateMap();
                     invalidate();
                     if (TripStore.DESTINATION.equals(key) && TripStore.destination(getCarContext())!=null) calculateCarRoute();
                 });
@@ -343,29 +351,10 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         map.animateCamera(CameraUpdateFactory.newLatLngZoom(location,zoom));
     }
 
-    /** NaviTH-owned small teal direction arrow; not extracted from another APK. */
+    /** Same AMAP-ground-aligned 2.5D artwork as the handset. */
     private BitmapDescriptor carMarkerIcon() {
-        if(carArrowIcon!=null)return carArrowIcon;
-        Bitmap bitmap=Bitmap.createBitmap(72,72,Bitmap.Config.ARGB_8888);
-        Canvas canvas=new Canvas(bitmap);
-        Path arrow=new Path();
-        arrow.moveTo(36f,6f);
-        arrow.lineTo(60f,61f);
-        arrow.lineTo(36f,50f);
-        arrow.lineTo(12f,61f);
-        arrow.close();
-        Paint border=new Paint(Paint.ANTI_ALIAS_FLAG);
-        border.setStyle(Paint.Style.STROKE);
-        border.setStrokeJoin(Paint.Join.ROUND);
-        border.setStrokeWidth(7f);
-        border.setColor(android.graphics.Color.WHITE);
-        canvas.drawPath(arrow,border);
-        Paint fill=new Paint(Paint.ANTI_ALIAS_FLAG);
-        fill.setColor(0xff0F766E);
-        fill.setStyle(Paint.Style.FILL);
-        canvas.drawPath(arrow,fill);
-        carArrowIcon=BitmapDescriptorFactory.fromBitmap(bitmap);
-        bitmap.recycle();
+        if(carArrowIcon==null)
+            carArrowIcon=NavigationMarkerFactory.make(getCarContext(),viewPrefs);
         return carArrowIcon;
     }
 
@@ -376,8 +365,13 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         if (carLocationMarker==null) {
             carLocationMarker=map.addMarker(new MarkerOptions().position(at)
                 .title(tr("ตำแหน่งของฉัน","My location"))
-                .anchor(0.5f,0.5f).icon(carMarkerIcon()));
+                .anchor(0.5f,0.5f).setFlat(true)
+                .icon(carMarkerIcon()).zIndex(8f));
         } else carLocationMarker.setPosition(at);
+        float heading=TripStore.heading(getCarContext());
+        if(heading>=0f)carLocationMarker.setRotateAngle(
+            NavigationMarkerFactory.angleForBearing(heading));
+        carLocationMarker.setAlpha(TripStore.hasRecentLocation(getCarContext())?1f:0.5f);
         // Follow only a fresh actual GPS fix; avoid repeated full-route redraws.
         // Pan/zoom temporarily disables follow until user taps the Locate action.
         if (followGps && TripStore.hasRecentLocation(getCarContext())) {
@@ -389,7 +383,6 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
                 CameraPosition.Builder camera=new CameraPosition.Builder().target(at)
                         .zoom(inDrive?Math.max(17f,zoom):zoom)
                         .tilt(viewPrefs.getBoolean("view3d",true)?55f:0f);
-                float heading=TripStore.heading(getCarContext());
                 if(inDrive && heading>=0f && viewPrefs.getBoolean("view3d",true))
                     camera.bearing(heading);
                 else camera.bearing(map.getCameraPosition().bearing);
@@ -405,9 +398,14 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         LatLng from=TripStore.location(getCarContext());
         LatLng dest=TripStore.destination(getCarContext());
         List<LatLng> path=TripStore.route(getCarContext());
-        if (from!=null) carLocationMarker=map.addMarker(new MarkerOptions().position(from)
-                .title(tr("ตำแหน่งของฉัน","My location"))
-                .anchor(0.5f,0.5f).icon(carMarkerIcon()));
+        if (from!=null) {
+            carLocationMarker=map.addMarker(new MarkerOptions().position(from)
+                .title(tr("ตำแหน่งของฉัน","My location")).anchor(0.5f,0.5f)
+                .setFlat(true).icon(carMarkerIcon()).zIndex(8f));
+            float angle=TripStore.heading(getCarContext());
+            if(angle>=0f)carLocationMarker.setRotateAngle(
+                NavigationMarkerFactory.angleForBearing(angle));
+        }
         if (dest!=null) map.addMarker(new MarkerOptions().position(dest).title(TripStore.destinationName(getCarContext())));
         if (path.size()>=2) {
             map.addPolyline(new PolylineOptions().addAll(path).width(5f).color(0xff087f73).zIndex(2));
