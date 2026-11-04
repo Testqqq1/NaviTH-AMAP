@@ -20,6 +20,8 @@ import android.widget.CompoundButton;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Switch;
+import android.widget.EditText;
+import android.text.InputType;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -121,6 +123,13 @@ public final class SettingsActivity extends Activity {
         groupStart();
         line(tx("ภาษาแอป","App language"),tx("ชื่อสถานที่ขึ้นกับข้อมูลแผนที่","Map labels depend on provider"),
             NaviLocale.thai(this)?"ไทย":"English",()->chooseLanguage());
+        section(tx("บริการค้นหาสำรอง","External search service"));
+        groupStart();
+        line(tx("เชื่อมต่อ AMAP MCP","Connect AMAP MCP"),
+            tx("ค้นหาสำรองผ่าน HTTPS เมื่อ Native SDK ไม่พบข้อมูล",
+               "HTTPS fallback only when Native SDK returns no places"),
+            McpPlacesClient.isConfigured(this)?tx("เชื่อมต่อพร้อมใช้งาน","Configured"):
+                tx("ยังไม่ตั้งค่า","Not configured"), ()->configureMcp());
         section(tx("แผนที่ออฟไลน์","Offline maps"));
         groupStart();
         line(tx("เมืองที่ดาวน์โหลดได้","Available city maps"),
@@ -259,6 +268,75 @@ public final class SettingsActivity extends Activity {
                     startActivityForResult(pick,PICK_MAP_STYLE);
                 }
             }).show();
+    }
+
+    /**
+     * Connection settings only. No automatic communication takes place until
+     * enabled and native search fails; never record credentials in logs.
+     */
+    private void configureMcp() {
+        SharedPreferences p=McpPlacesClient.settings(this);
+        LinearLayout form=new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(20),dp(8),dp(20),dp(4));
+        TextView desc=label(tx(
+            "MCP ต้องทำงานบนเซิร์ฟเวอร์ HTTPS ของคุณเองและใช้ Web Service Key แยกจาก AMAP Android SDK\\nคำค้นหาจะถูกส่งไปเซิร์ฟเวอร์นี้เฉพาะเมื่อตั้งค่าและเปิดใช้งาน",
+            "Requires your own HTTPS MCP bridge with a separate AMAP Web Service key. Search terms are sent to this server only if you opt in."),
+            13,secondary,false);
+        desc.setPadding(0,0,0,dp(14));
+        form.addView(desc);
+        EditText endpoint=new EditText(this);
+        endpoint.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
+        endpoint.setSingleLine(true);
+        endpoint.setHint("https://maps.example.com");
+        endpoint.setText(p.getString("url",""));
+        endpoint.setTextSize(15);
+        endpoint.setContentDescription(tx("ที่อยู่ HTTPS เซิร์ฟเวอร์ MCP","MCP bridge HTTPS URL"));
+        form.addView(endpoint,new LinearLayout.LayoutParams(-1,dp(54)));
+        EditText token=new EditText(this);
+        token.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        token.setHint(tx("โทเค็นเข้าถึงเซิร์ฟเวอร์","Bridge access token"));
+        token.setSingleLine(true);
+        token.setTextSize(15);
+        token.setContentDescription(tx("โทเค็น","Access token"));
+        form.addView(token,new LinearLayout.LayoutParams(-1,dp(54)));
+        Switch enabled=new Switch(this);
+        enabled.setText(tx("เปิดใช้ค้นหาสำรองเมื่อ AMAP Native ไม่พบผลลัพธ์",
+            "Enable fallback only when Native AMAP returns no results"));
+        enabled.setTextSize(13);
+        enabled.setChecked(p.getBoolean("enabled",false));
+        enabled.setMinHeight(dp(60));
+        form.addView(enabled);
+        new AlertDialog.Builder(this)
+            .setTitle(tx("เชื่อมต่อ AMAP MCP","AMAP MCP connection"))
+            .setView(form)
+            .setPositiveButton(tx("บันทึก","Save"),(dialog,which)->{
+                String url=endpoint.getText().toString().trim();
+                String newToken=token.getText().toString();
+                if(!McpPlacesClient.validBaseUrl(url) || 
+                    (newToken.length()<24 && p.getString("token","").length()<24)) {
+                    p.edit().putBoolean("enabled",false).apply();
+                    Toast.makeText(this,tx(
+                        "ต้องเป็น HTTPS URL ที่ถูกต้องและ Token อย่างน้อย 24 ตัวอักษร",
+                        "Valid HTTPS URL and token of 24+ characters required"),
+                        Toast.LENGTH_LONG).show();
+                }else{
+                    SharedPreferences.Editor edit=p.edit().putString("url",url);
+                    if(!newToken.isEmpty())edit.putString("token",newToken);
+                    edit.putBoolean("enabled",enabled.isChecked()).apply();
+                    Toast.makeText(this,tx(
+                        "บันทึกแล้ว (ยังไม่ได้ตรวจการเชื่อมต่อจริง)",
+                        "Saved (live connection not yet verified)"),
+                        Toast.LENGTH_SHORT).show();
+                }
+                build();
+            })
+            .setNeutralButton(tx("ตัดการเชื่อมต่อ","Disconnect"),(dialog,which)->{
+                p.edit().clear().apply();
+                build();
+            })
+            .setNegativeButton(tx("ยกเลิก","Cancel"),null)
+            .show();
     }
 
     private void chooseMarker() {
