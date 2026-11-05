@@ -35,9 +35,12 @@ public final class MapboxDirectionsClient {
         public final LatLng point;
         public final String instruction;
         public final String type;
+        public final String modifier;
+        public final String roadName;
         public final double distance;
-        Step(LatLng p, String text, String kind, double meters) {
-            point=p;instruction=text;type=kind;distance=meters;
+        Step(LatLng p, String text, String kind, String direction, String road, double meters) {
+            point=p;instruction=text;type=kind;modifier=direction;
+            roadName=road;distance=meters;
         }
     }
     public static final class Route {
@@ -154,7 +157,10 @@ public final class MapboxDirectionsClient {
                             if(!valid(point))continue;
                             String instruction=maneuver.optString("instruction","");
                             steps.add(new Step(point,instruction,
-                                maneuver.optString("type",""),step.optDouble("distance",0)));
+                                maneuver.optString("type",""),
+                                maneuver.optString("modifier",""),
+                                step.optString("name",""),
+                                step.optDouble("distance",0)));
                         }
                     }
                     parsed.add(new Route(geometry,steps,

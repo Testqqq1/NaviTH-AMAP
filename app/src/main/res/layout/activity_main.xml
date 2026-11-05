@@ -53,7 +53,8 @@
         android:textColor="@color/nav_secondary" android:textSize="13sp" />
 
     <!-- Exactly two controls remain on the map. -->
-    <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+    <LinearLayout android:id="@+id/mainMapControls"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
         android:layout_gravity="end|center_vertical"
         android:layout_marginEnd="16dp" android:orientation="vertical">
         <LinearLayout android:id="@+id/zoomButtons"
@@ -547,73 +548,137 @@
         android:ellipsize="end" android:textColor="@color/nav_secondary"
         android:text="@string/search_empty"/>
 
-    <!-- Separate foreground TEST navigation scene; never claims production guidance. -->
+    <!-- Immersive NaviTH guidance mode: native Android UI, no copied AMap assets.
+         Dynamic maneuver data comes from the current provider; no fake junction image. -->
     <LinearLayout android:id="@+id/activeNavTop"
         android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:layout_gravity="top" android:layout_margin="12dp"
-        android:orientation="vertical" android:background="@drawable/nav_bg_floating"
-        android:elevation="8dp" android:padding="16dp"
+        android:layout_gravity="top"
+        android:layout_marginTop="10dp" android:layout_marginStart="10dp"
+        android:layout_marginEnd="10dp" android:background="@drawable/nav_guidance_panel"
+        android:orientation="vertical" android:paddingStart="15dp"
+        android:paddingEnd="15dp" android:paddingTop="10dp"
+        android:paddingBottom="13dp" android:elevation="10dp"
         android:visibility="gone">
-        <TextView android:id="@+id/activeNavPhase"
-            android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="MAPBOX · GPS TEST" android:textStyle="bold" android:textSize="11sp"
-            android:textColor="@color/nav_warning"/>
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:orientation="horizontal" android:gravity="center_vertical"
-            android:layout_marginTop="6dp">
-            <ImageView android:layout_width="36dp" android:layout_height="42dp"
-                android:padding="5dp" android:src="@drawable/nav_min_route"
-                android:contentDescription="@null"/>
+            android:orientation="horizontal" android:gravity="center_vertical">
+            <ImageView android:id="@+id/activeNavManeuver"
+                android:layout_width="53dp" android:layout_height="62dp"
+                android:padding="3dp" android:src="@drawable/nav_guidance_straight"
+                android:contentDescription="การเลี้ยวถัดไป"/>
             <LinearLayout android:layout_width="0dp" android:layout_weight="1"
                 android:layout_height="wrap_content" android:orientation="vertical"
-                android:paddingStart="12dp">
-                <TextView android:id="@+id/activeNavDistance"
-                    android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:text="-- ม." android:textSize="24sp" android:textStyle="bold"
-                    android:textColor="@color/nav_text"/>
+                android:paddingStart="8dp">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="horizontal" android:gravity="center_vertical">
+                    <TextView android:id="@+id/activeNavDistance"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="--" android:textColor="#FFFFFFFF" android:textStyle="bold"
+                        android:textSize="34sp" android:fontFamily="sans-serif-condensed"/>
+                    <TextView android:id="@+id/activeNavPhase"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:text="ทดสอบ · รอ GPS" android:textSize="11sp"
+                        android:textColor="#FFC6A36E" android:maxLines="1"/>
+                </LinearLayout>
                 <TextView android:id="@+id/activeNavInstruction"
                     android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:text="รอข้อมูลเลี้ยวจาก Mapbox..." android:textSize="15sp"
-                    android:textColor="@color/nav_text" android:maxLines="2"
+                    android:text="กำลังรับคำสั่งเลี้ยว"
+                    android:textColor="#FFFFFFFF" android:textSize="18sp"
+                    android:textStyle="bold" android:maxLines="2"
                     android:ellipsize="end"/>
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>
+
+    <LinearLayout android:id="@+id/activeNavSpeedPanel"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="start|center_vertical"
+        android:layout_marginStart="14dp" android:layout_marginTop="60dp"
+        android:padding="12dp" android:orientation="vertical"
+        android:background="@drawable/nav_guidance_round"
+        android:gravity="center" android:elevation="5dp"
+        android:visibility="gone">
+        <TextView android:id="@+id/activeNavSpeed"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="--" android:textSize="29sp" android:textStyle="bold"
+            android:textColor="#FFFFFFFF" android:fontFamily="sans-serif-condensed"/>
+        <TextView android:id="@+id/activeNavSpeedUnit"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="km/h" android:textSize="11sp" android:textColor="#FFB8C5D8"/>
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/activeNavLeftControls"
+        android:layout_width="62dp" android:layout_height="wrap_content"
+        android:layout_gravity="start|bottom"
+        android:layout_marginStart="12dp" android:layout_marginBottom="132dp"
+        android:orientation="vertical" android:visibility="gone">
+        <ImageView android:id="@+id/activeNavRecenter"
+            android:layout_width="58dp" android:layout_height="58dp"
+            android:padding="14dp" android:src="@drawable/nav_guidance_icon_center"
+            android:background="@drawable/nav_guidance_round"
+            android:clickable="true" android:focusable="true"
+            android:contentDescription="กลับมาติดตามรถ"/>
+        <ImageView android:id="@+id/activeNavSound"
+            android:layout_width="58dp" android:layout_height="58dp"
+            android:layout_marginTop="10dp" android:padding="14dp"
+            android:src="@drawable/nav_guidance_icon_sound"
+            android:background="@drawable/nav_guidance_round"
+            android:clickable="true" android:focusable="true"
+            android:contentDescription="เปิดหรือปิดเสียงนำทาง"/>
+    </LinearLayout>
+
+    <TextView android:id="@+id/activeNavStreet"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="116dp"
+        android:paddingStart="18dp" android:paddingEnd="18dp"
+        android:paddingTop="6dp" android:paddingBottom="6dp"
+        android:text="กำลังติดตามเส้นทาง"
+        android:textColor="#FFFFFFFF" android:textSize="13sp"
+        android:background="@drawable/nav_guidance_round"
+        android:maxWidth="260dp" android:maxLines="1" android:ellipsize="end"
+        android:visibility="gone"/>
+
     <LinearLayout android:id="@+id/activeNavBottom"
         android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:layout_gravity="bottom" android:layout_margin="12dp"
-        android:orientation="vertical" android:background="@drawable/nav_bg_sheet"
-        android:elevation="9dp" android:padding="16dp" android:visibility="gone">
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="นำทางแบบทดลอง · ไม่ใช่ระบบนำทางหลักขณะขับรถ"
-            android:textSize="11sp" android:textColor="@color/nav_warning"
-            android:maxLines="2"/>
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:orientation="horizontal" android:layout_marginTop="6dp"
-            android:gravity="center_vertical">
-            <TextView android:id="@+id/activeNavEta"
-                android:layout_width="0dp" android:layout_weight="1"
-                android:layout_height="wrap_content" android:text="ETA --:--"
-                android:textColor="@color/nav_text" android:textStyle="bold" android:textSize="18sp"/>
-            <TextView android:id="@+id/activeNavRemaining"
-                android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="-- กม." android:textColor="@color/nav_secondary"
-                android:textSize="16sp"/>
+        android:layout_gravity="bottom"
+        android:layout_marginStart="10dp" android:layout_marginEnd="10dp"
+        android:layout_marginBottom="9dp"
+        android:orientation="horizontal" android:gravity="center_vertical"
+        android:paddingStart="6dp" android:paddingEnd="10dp"
+        android:paddingTop="12dp" android:paddingBottom="12dp"
+        android:background="@drawable/nav_guidance_panel"
+        android:elevation="11dp" android:visibility="gone">
+        <TextView android:id="@+id/activeNavStop"
+            android:layout_width="56dp" android:layout_height="64dp"
+            android:gravity="center" android:text="×" android:textSize="40sp"
+            android:textColor="#FFFFFFFF" android:clickable="true"
+            android:focusable="true" android:contentDescription="หยุดนำทาง"/>
+        <LinearLayout android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="wrap_content" android:orientation="vertical"
+            android:gravity="center" android:paddingStart="4dp">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:gravity="center_vertical|center_horizontal" android:orientation="horizontal">
+                <TextView android:id="@+id/activeNavEta"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="-- นาที" android:textSize="19sp"
+                    android:textStyle="bold" android:textColor="#FFFFFFFF"/>
+                <TextView android:id="@+id/activeNavRemaining"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp" android:text="-- กม."
+                    android:textSize="17sp" android:textColor="#FFD0D9E5"/>
+            </LinearLayout>
+            <TextView android:id="@+id/activeNavArrival"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:gravity="center" android:text="--:-- ถึงปลายทาง"
+                android:textSize="15sp" android:textColor="#FFA8B6CB"
+                android:layout_marginTop="1dp"/>
         </LinearLayout>
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:orientation="horizontal" android:layout_marginTop="10dp">
-            <Button android:id="@+id/activeNavRecenter"
-                android:layout_width="0dp" android:layout_weight="1"
-                android:layout_height="50dp" android:text="ตำแหน่งของฉัน"
-                android:textAllCaps="false" android:textColor="@color/nav_primary"
-                android:background="@drawable/nav_bg_subtle"/>
-            <Button android:id="@+id/activeNavStop"
-                android:layout_width="0dp" android:layout_weight="1"
-                android:layout_height="50dp" android:layout_marginStart="8dp"
-                android:text="หยุดนำทาง" android:textAllCaps="false"
-                android:textColor="@android:color/white"
-                android:background="@drawable/nav_bg_button"/>
-        </LinearLayout>
+        <TextView android:id="@+id/activeNavOverview"
+            android:layout_width="54dp" android:layout_height="64dp"
+            android:gravity="center" android:text="≋" android:textSize="31sp"
+            android:textColor="#FFFFFFFF" android:clickable="true"
+            android:focusable="true" android:contentDescription="ดูภาพรวมเส้นทาง"/>
     </LinearLayout>
 
     <!-- Search takes focus only when requested, with recent/favorites and POI suggestions. -->
