@@ -24,7 +24,7 @@ import java.io.File;
  */
 public final class NavigationMarkerFactory {
     private static final int SIZE=144;
-    public static final int ARROW=6, OWN_IMAGE=7, MINIMAL_ARROW=8, POSITION_3D=9;
+    public static final int ARROW=6, OWN_IMAGE=7, MINIMAL_ARROW=8, POSITION_3D=9, GUIDANCE_CAR=10;
     private NavigationMarkerFactory() {}
 
     public static BitmapDescriptor make(Context context, SharedPreferences settings) {
@@ -35,6 +35,14 @@ public final class NavigationMarkerFactory {
         return descriptor;
     }
 
+    /** Native, independently drawn 2.5D guidance car; not copied from AMap. */
+    public static BitmapDescriptor guidanceCar(Context context) {
+        Bitmap bitmap=preview(context,GUIDANCE_CAR,true);
+        BitmapDescriptor descriptor=BitmapDescriptorFactory.fromBitmap(bitmap);
+        bitmap.recycle();
+        return descriptor;
+    }
+
     public static Bitmap preview(Context context,int kind,boolean perspective) {
         Bitmap b=Bitmap.createBitmap(SIZE,SIZE,Bitmap.Config.ARGB_8888);
         Canvas c=new Canvas(b);
@@ -42,12 +50,16 @@ public final class NavigationMarkerFactory {
         c.translate(SIZE/2f,SIZE/2f);
         // Source geometry uses +/- 48 world pixels; exact center stays at
         // the antenna/GPS coordinate, including when camera pitch changes.
-        if(kind!=MINIMAL_ARROW)drawShadow(c);
+        if(kind==GUIDANCE_CAR){
+            c.drawCircle(0,0,54f,fill(0x1F399AFF));
+            c.drawCircle(0,0,53f,outline(0x774EBCFF,2.5f));
+        } else if(kind!=MINIMAL_ARROW)drawShadow(c);
         if(kind==OWN_IMAGE && drawOwnImage(context,c)) { /* owned bitmap */ }
         else if(kind==ARROW || kind==MINIMAL_ARROW)
             drawArrow(c,kind==MINIMAL_ARROW,perspective);
-        else drawCar(c,kind==POSITION_3D?3:Math.max(0,Math.min(kind,5)),
-            perspective || kind==POSITION_3D);
+        else drawCar(c,(kind==POSITION_3D || kind==GUIDANCE_CAR)?
+                3:Math.max(0,Math.min(kind,5)),
+            perspective || kind==POSITION_3D || kind==GUIDANCE_CAR);
         c.restore();
         return b;
     }
