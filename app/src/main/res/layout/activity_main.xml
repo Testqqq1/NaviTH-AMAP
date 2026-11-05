@@ -53,7 +53,8 @@
         android:textColor="@color/nav_secondary" android:textSize="13sp" />
 
     <!-- Exactly two controls remain on the map. -->
-    <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+    <LinearLayout android:id="@+id/mainMapControls"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
         android:layout_gravity="end|center_vertical"
         android:layout_marginEnd="16dp" android:orientation="vertical">
         <LinearLayout android:id="@+id/zoomButtons"
