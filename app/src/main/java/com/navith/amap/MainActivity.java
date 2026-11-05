@@ -660,6 +660,7 @@ public final class MainActivity extends Activity implements
                 Math.round(accuracy)+(NaviLocale.thai(this)?" เมตร":" meters"));
         }
         if (mapboxGuiding) {
+            if(gpsStatus!=null)gpsStatus.setVisibility(View.GONE);
             updateGuidanceSpeed(fix);
             if(accuracy<=70f) updateMapboxGuidance(fix);
         }
@@ -1970,7 +1971,7 @@ public final class MainActivity extends Activity implements
     private void updateLocationMarkerVisibility() {
         boolean visible=getViewPrefs().getBoolean("show_location",true);
         if(myMarker!=null)myMarker.setVisible(visible);
-        if(accuracyRing!=null)accuracyRing.setVisible(visible);
+        if(accuracyRing!=null)accuracyRing.setVisible(visible && !mapboxGuiding);
         if(gpsStatus!=null) {
             if(!hasLocationPermission()) {
                 gpsStatus.setText(R.string.gps_permission);
@@ -2041,6 +2042,13 @@ public final class MainActivity extends Activity implements
     }
 
     @Override public void onBackPressed(){
+        if(mapboxGuiding){
+            new AlertDialog.Builder(this)
+                .setTitle(tr("หยุดนำทางแบบทดลอง?","Stop test guidance?"))
+                .setPositiveButton(tr("หยุดนำทาง","Stop"),(d,w)->stopMapboxGuidance())
+                .setNegativeButton(tr("กลับไปนำทาง","Continue"),null).show();
+            return;
+        }
         if(searchOverlay!=null && searchOverlay.getVisibility()==View.VISIBLE){
             closeSearch();return;
         }
@@ -2336,6 +2344,7 @@ public final class MainActivity extends Activity implements
         reroutingMapbox=false;
         showActiveNavigation(false);
         if(mapboxVoice!=null)mapboxVoice.stop();
+        updateLocationMarkerVisibility();
         if(initialized && destination!=null) {
             refreshNavigationAction();
             if(routeSummary!=null)routeSummary.setText(
@@ -2374,7 +2383,8 @@ public final class MainActivity extends Activity implements
     private void speakMapbox(String instruction) {
         String voice=getViewPrefs().getString("voice_style","smart");
         if("mute".equals(voice))return;
-        if(mapboxVoice!=null && instruction!=null && !instruction.isEmpty())
+        if(!guidanceMuted && mapboxVoice!=null &&
+            instruction!=null && !instruction.isEmpty())
             mapboxVoice.speak(instruction,TextToSpeech.QUEUE_FLUSH,null,"mapbox-guidance");
     }
 
@@ -2402,10 +2412,16 @@ public final class MainActivity extends Activity implements
         if(drawNow-lastGuidanceUiFrame>=500L) {
             lastGuidanceUiFrame=drawNow;
             routeSummary.setText(instruction+" · "+Math.round(remaining)+" m · Mapbox");
-            TextView text=findViewById(R.id.activeNavInstruction);
-            TextView distance=findViewById(R.id.activeNavDistance);
-            if(text!=null)text.setText(instruction);
-            if(distance!=null)distance.setText(Math.round(remaining)+tr(" ม."," m"));
+            updateGuidanceManeuver(step,remaining);
+            // Approximate remaining route only; Mapbox Navigation SDK
+            // RouteProgress will replace this once the full engine is installed.
+            double remainingMeters=Math.max(0f,remaining);
+            for(int i=mapboxNextStep;i<selectedMapboxRoute.steps.size();i++)
+                remainingMeters+=Math.max(0d,selectedMapboxRoute.steps.get(i).distance);
+            remainingMeters=Math.min(selectedMapboxRoute.meters,remainingMeters);
+            double fraction=selectedMapboxRoute.meters>0f?
+                remainingMeters/selectedMapboxRoute.meters:0d;
+            updateGuidanceTrip(remainingMeters,Math.round(selectedMapboxRoute.seconds*fraction));
         }
         String voiceStyle=getViewPrefs().getString("voice_style","smart");
         float announceAt="concise".equals(voiceStyle)?80f:
@@ -2457,6 +2473,9 @@ public final class MainActivity extends Activity implements
                 if(navPhase!=null)navPhase.setText("MAPBOX · GPS TEST");
                 drawRoute(selectedMapboxRoute.geometry,selectedMapboxRoute.meters,
                     selectedMapboxRoute.seconds,tr("รถยนต์ · Mapbox","Driving · Mapbox"));
+                updateGuidanceTrip(selectedMapboxRoute.meters,selectedMapboxRoute.seconds);
+                if(selectedMapboxRoute.steps.size()>1)
+                    updateGuidanceManeuver(selectedMapboxRoute.steps.get(1),-1f);
                 speakMapbox(tr("คำนวณเส้นทางใหม่แล้ว","Route recalculated"));
             }
             @Override public void failure(String message) {
