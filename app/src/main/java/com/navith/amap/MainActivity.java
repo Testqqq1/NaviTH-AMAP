@@ -2111,12 +2111,22 @@ public final class MainActivity extends Activity implements
      */
 
     /** Separate test guidance chrome from Home/RoutePreview. No synthetic SDK state. */
+    /** Immersive native Android HUD on AMAP night tiles, not the AMap Navigation SDK. */
     private void showActiveNavigation(boolean active) {
         View top=findViewById(R.id.activeNavTop);
         View bottom=findViewById(R.id.activeNavBottom);
         if(top==null || bottom==null || homePanel==null || routePanel==null)return;
         top.setVisibility(active?View.VISIBLE:View.GONE);
         bottom.setVisibility(active?View.VISIBLE:View.GONE);
+        for(int id:new int[]{R.id.activeNavSpeedPanel,R.id.activeNavLeftControls,
+                R.id.activeNavStreet}){
+            View item=findViewById(id);
+            if(item!=null)item.setVisibility(active?View.VISIBLE:View.GONE);
+        }
+        View usualControls=findViewById(R.id.mainMapControls);
+        if(usualControls!=null)usualControls.setVisibility(active?View.GONE:View.VISIBLE);
+        if(gpsStatus!=null)gpsStatus.setVisibility(View.GONE);
+        if(statusText!=null)statusText.setVisibility(View.GONE);
         homePanel.setVisibility(View.GONE);
         routePanel.setVisibility(active?View.GONE:
             (destination==null?View.GONE:View.VISIBLE));
@@ -2124,32 +2134,168 @@ public final class MainActivity extends Activity implements
         View search=findViewById(R.id.topSearchBar);
         if(search!=null)search.setVisibility(active?View.GONE:View.VISIBLE);
         if(active) {
-            // Single transition into following mode; do not fit the whole route each GPS tick.
-            if(map!=null && myLocation!=null) {
-                CameraPosition current=map.getCameraPosition();
-                CameraPosition.Builder follow=new CameraPosition.Builder(current)
-                    .target(myLocation).zoom(Math.max(16.5f,current.zoom))
-                    .tilt(mapboxGuiding?56f:getViewPrefs().getBoolean("view3d",true)?48f:0f);
-                map.animateCamera(CameraUpdateFactory.newCameraPosition(follow.build()));
+            if(activeVehicleIcon==null)activeVehicleIcon=NavigationMarkerFactory.guidanceCar(this);
+            getWindow().setStatusBarColor(Color.rgb(10,13,23));
+            getWindow().setNavigationBarColor(Color.rgb(10,13,23));
+            getWindow().getDecorView().setSystemUiVisibility(0);
+            if(map!=null) {
+                applyMapPreferences(); // force AMap night map and buildings while test guidance is active
+                map.getUiSettings().setCompassEnabled(false);
+                map.showBuildings(true);
+                if(myMarker!=null)myMarker.setIcon(activeVehicleIcon);
+                refreshGuidanceRoutePaint(true);
+                if(mapView!=null)mapView.post(()->{
+                    if(!mapboxGuiding || mapView.getWidth()<1 || mapView.getHeight()<1)return;
+                    map.setPointToCenter(mapView.getWidth()/2,
+                        Math.round(mapView.getHeight()*0.70f));
+                    if(myLocation!=null){
+                        CameraPosition current=map.getCameraPosition();
+                        map.animateCamera(CameraUpdateFactory.newCameraPosition(
+                            new CameraPosition.Builder(current).target(myLocation)
+                                .zoom(Math.max(17.0f,current.zoom)).tilt(56f).build()));
+                    }
+                });
             }
+            guidanceMuted="mute".equals(getViewPrefs().getString("voice_style","smart"));
+            updateGuidanceSoundIcon();
             TextView phase=findViewById(R.id.activeNavPhase);
             TextView instruction=findViewById(R.id.activeNavInstruction);
             TextView distance=findViewById(R.id.activeNavDistance);
-            TextView eta=findViewById(R.id.activeNavEta);
-            TextView remaining=findViewById(R.id.activeNavRemaining);
-            if(phase!=null)phase.setText("MAPBOX · GPS TEST");
+            TextView speed=findViewById(R.id.activeNavSpeed);
+            if(phase!=null)phase.setText(tr("ทดสอบ · รอ GPS","TEST · Awaiting GPS"));
             if(instruction!=null)instruction.setText(
-                tr("กำลังรอ GPS และคำสั่งเลี้ยว","Waiting for GPS and maneuvers"));
+                tr("กำลังรับคำสั่งเลี้ยว","Waiting for maneuver data"));
             if(distance!=null)distance.setText("--");
+            if(speed!=null)speed.setText("--");
             if(selectedMapboxRoute!=null) {
-                if(eta!=null)eta.setText(tr("เวลาประมาณ ","Approx. ")+
-                    Math.max(1L,Math.round(selectedMapboxRoute.seconds/60f))+
-                    tr(" นาที"," min"));
-                if(remaining!=null)remaining.setText(
-                    String.format(Locale.US,"%.1f",selectedMapboxRoute.meters/1000f)+
-                    tr(" กม."," km"));
+                updateGuidanceTrip(selectedMapboxRoute.meters,selectedMapboxRoute.seconds);
+                if(selectedMapboxRoute.steps.size()>1) {
+                    MapboxDirectionsClient.Step firstTurn=selectedMapboxRoute.steps.get(1);
+                    updateGuidanceManeuver(firstTurn,-1f);
+                }
             }
-        } else applyHomeChrome();
+        } else {
+            if(map!=null){
+                if(mapView!=null)mapView.post(()->{
+                    if(mapboxGuiding || mapView.getWidth()<1||mapView.getHeight()<1)return;
+                    map.setPointToCenter(mapView.getWidth()/2,mapView.getHeight()/2);
+                });
+                applyMapPreferences(); // restores user-selected day/night/3D/style and marker
+                map.getUiSettings().setCompassEnabled(true);
+                if(myMarker!=null)myMarker.setIcon(currentMarkerIcon());
+                refreshGuidanceRoutePaint(false);
+            }
+            getWindow().setStatusBarColor(getColor(R.color.nav_surface));
+            getWindow().setNavigationBarColor(getColor(R.color.nav_surface));
+            getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+            applyHomeChrome();
+        }
+    }
+
+    private void refreshGuidanceRoutePaint(boolean active) {
+        if(map==null || selectedMapboxRoute==null ||
+            selectedMapboxRoute.geometry.size()<2)return;
+        clearRouteLine();
+        if(active)activeRouteCasing=map.addPolyline(new PolylineOptions()
+            .addAll(selectedMapboxRoute.geometry).width(dp(16))
+            .color(0x993E7EFF).zIndex(2.5f));
+        routeLine=map.addPolyline(new PolylineOptions()
+            .addAll(selectedMapboxRoute.geometry).width(dp(active?11:5))
+            .color(0xFF2788FF).zIndex(3f));
+    }
+
+    private void updateGuidanceSoundIcon() {
+        ImageView icon=findViewById(R.id.activeNavSound);
+        if(icon==null)return;
+        icon.setImageResource(guidanceMuted?
+            R.drawable.nav_guidance_icon_mute:R.drawable.nav_guidance_icon_sound);
+        icon.setContentDescription(guidanceMuted?
+            tr("เปิดเสียงนำทาง","Unmute navigation"):
+            tr("ปิดเสียงนำทาง","Mute navigation"));
+    }
+
+    private void toggleGuidanceSound() {
+        if(!mapboxGuiding)return;
+        guidanceMuted=!guidanceMuted;
+        if(guidanceMuted && mapboxVoice!=null)mapboxVoice.stop();
+        updateGuidanceSoundIcon();
+    }
+
+    private void showGuidanceOverview() {
+        if(map==null || selectedMapboxRoute==null ||
+            selectedMapboxRoute.geometry.size()<2)return;
+        followLocation=false;
+        LatLngBounds.Builder bounds=new LatLngBounds.Builder();
+        for(LatLng p:selectedMapboxRoute.geometry)bounds.include(p);
+        map.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds.build(),dp(72)));
+    }
+
+    private void updateGuidanceSpeed(Location fix) {
+        long now=SystemClock.elapsedRealtime();
+        if(now-lastSpeedUiFrame<500L)return;
+        lastSpeedUiFrame=now;
+        TextView view=findViewById(R.id.activeNavSpeed);
+        if(view==null)return;
+        if(!fix.hasSpeed() || !fix.hasAccuracy() || fix.getAccuracy()>70f){
+            view.setText("--");
+            return;
+        }
+        boolean mph=getViewPrefs().getBoolean("mph",false);
+        float kph=Math.max(0f,fix.getSpeed()*3.6f);
+        view.setText(String.valueOf(Math.round(mph?kph/1.609344f:kph)));
+        TextView unit=findViewById(R.id.activeNavSpeedUnit);
+        if(unit!=null)unit.setText(mph?"mph":"km/h");
+    }
+
+    private void updateGuidanceManeuver(MapboxDirectionsClient.Step step,float meters) {
+        if(step==null)return;
+        ImageView arrow=findViewById(R.id.activeNavManeuver);
+        if(arrow!=null){
+            String direction=step.modifier.toLowerCase(Locale.ROOT);
+            int icon=direction.contains("uturn")?
+                R.drawable.nav_guidance_uturn:
+                direction.contains("right")?R.drawable.nav_guidance_turn_right:
+                direction.contains("left")?R.drawable.nav_guidance_turn_left:
+                R.drawable.nav_guidance_straight;
+            arrow.setImageResource(icon);
+        }
+        TextView distance=findViewById(R.id.activeNavDistance);
+        if(distance!=null)distance.setText(meters<0f?"--":
+            meters>=1000f?
+                String.format(Locale.US,"%.1f",meters/1000f)+tr(" กม."," km"):
+                Math.round(meters)+tr(" ม."," m"));
+        TextView instruction=findViewById(R.id.activeNavInstruction);
+        if(instruction!=null)instruction.setText(step.instruction.isEmpty()?
+            tr("ดำเนินต่อไปตามเส้นทาง","Continue on the route"):step.instruction);
+        TextView street=findViewById(R.id.activeNavStreet);
+        if(street!=null){
+            street.setText(step.roadName);
+            street.setVisibility(step.roadName.isEmpty()?View.GONE:View.VISIBLE);
+        }
+        TextView phase=findViewById(R.id.activeNavPhase);
+        if(phase!=null && !reroutingMapbox)
+            phase.setText(tr("ทดสอบ · GPS","GPS · TEST"));
+    }
+
+    /**
+     * Rough trip indicator using the remaining maneuvers; NOT SDK RouteProgress.
+     * Estimate is explicitly labeled, never presented as lane-level guidance.
+     */
+    private void updateGuidanceTrip(double meters,long seconds) {
+        TextView time=findViewById(R.id.activeNavEta);
+        TextView remaining=findViewById(R.id.activeNavRemaining);
+        TextView arrival=findViewById(R.id.activeNavArrival);
+        long safeSeconds=Math.max(0L,seconds);
+        if(time!=null)time.setText(tr("ประมาณ ","Approx. ")+
+            Math.max(1L,Math.round(safeSeconds/60.0))+tr(" นาที"," min"));
+        if(remaining!=null)remaining.setText(
+            String.format(Locale.US,"%.1f",Math.max(0,meters)/1000.0)+tr(" กม."," km"));
+        if(arrival!=null){
+            String hhmm=new SimpleDateFormat("HH:mm",Locale.getDefault())
+                .format(new Date(System.currentTimeMillis()+safeSeconds*1000L));
+            arrival.setText(hhmm+tr(" ถึงปลายทาง (ประมาณ)"," estimated arrival"));
+        }
     }
 
     private void startMapboxGuidance() {
