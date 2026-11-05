@@ -59,6 +59,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.RadioGroup;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -149,6 +150,10 @@ public final class MainActivity extends Activity implements
     private MapboxDirectionsClient.Route selectedMapboxRoute;
     private int mapboxRouteGeneration=0;
     private boolean mapboxGuiding=false;
+    private boolean guidanceMuted=false;
+    private BitmapDescriptor activeVehicleIcon;
+    private Polyline activeRouteCasing;
+    private long lastSpeedUiFrame=0L;
     private final NavigationUiState guidanceScene=new NavigationUiState();
     private long lastGuidanceUiFrame=0L;
     private int mapboxNextStep=1;
@@ -424,6 +429,8 @@ public final class MainActivity extends Activity implements
         });
         findViewById(R.id.activeNavStop).setOnClickListener(v -> stopMapboxGuidance());
         findViewById(R.id.activeNavRecenter).setOnClickListener(v -> recenter());
+        findViewById(R.id.activeNavSound).setOnClickListener(v -> toggleGuidanceSound());
+        findViewById(R.id.activeNavOverview).setOnClickListener(v -> showGuidanceOverview());
         findViewById(R.id.addressLookupButton).setOnClickListener(v -> {
             if(destination!=null)reverseSelectedAddress(destination);
         });
@@ -615,7 +622,7 @@ public final class MainActivity extends Activity implements
                 if(navigating && accuracy<=70f) {
                     CameraPosition.Builder camera=new CameraPosition.Builder(map.getCameraPosition())
                         .target(myLocation)
-                        .tilt(getViewPrefs().getBoolean("view3d",true)?48f:0f)
+                        .tilt(mapboxGuiding?56f:getViewPrefs().getBoolean("view3d",true)?48f:0f)
                         .zoom(Math.max(16.5f,zoom));
                     if(fix.hasBearing() && fix.hasSpeed() && fix.getSpeed()>1.5f) {
                         float raw=fix.getBearing();
@@ -652,7 +659,10 @@ public final class MainActivity extends Activity implements
             gpsStatus.setContentDescription(getString(R.string.my_position)+" ±"+
                 Math.round(accuracy)+(NaviLocale.thai(this)?" เมตร":" meters"));
         }
-        if (mapboxGuiding && accuracy<=70f) updateMapboxGuidance(fix);
+        if (mapboxGuiding) {
+            updateGuidanceSpeed(fix);
+            if(accuracy<=70f) updateMapboxGuidance(fix);
+        }
         if (first) status(tr("พบพิกัดจาก ","Location from ")+source);
     }
 
@@ -1267,8 +1277,12 @@ public final class MainActivity extends Activity implements
             routeSummary.setText(tr("ไม่มีข้อมูลแนวเส้นทาง","No route geometry"));
             return;
         }
+        if(mapboxGuiding) {
+            activeRouteCasing=map.addPolyline(new PolylineOptions().addAll(points)
+                .width(dp(16)).color(0x993E7EFF).zIndex(2.5f));
+        }
         routeLine = map.addPolyline(new PolylineOptions().addAll(points)
-                .width(dp(5)).color(getColor(R.color.nav_route)).zIndex(2));
+                .width(dp(mapboxGuiding?11:5)).color(0xFF2788FF).zIndex(3f));
         LatLngBounds.Builder bounds = new LatLngBounds.Builder();
         for (LatLng p : points) bounds.include(p);
         if (myLocation != null) bounds.include(myLocation);
@@ -1321,6 +1335,10 @@ public final class MainActivity extends Activity implements
         if (routeLine != null) {
             routeLine.remove();
             routeLine = null;
+        }
+        if(activeRouteCasing!=null) {
+            activeRouteCasing.remove();
+            activeRouteCasing=null;
         }
     }
 
@@ -1384,7 +1402,8 @@ public final class MainActivity extends Activity implements
         String theme = p.getString("theme", "auto");
         boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES;
-        int type = "satellite".equals(theme) ? AMap.MAP_TYPE_SATELLITE
+        int type = mapboxGuiding ? AMap.MAP_TYPE_NIGHT :
+            "satellite".equals(theme) ? AMap.MAP_TYPE_SATELLITE
                 : ("night".equals(theme) || ("auto".equals(theme) && dark))
                     ? AMap.MAP_TYPE_NIGHT : AMap.MAP_TYPE_NORMAL;
         map.setMapType(type);
@@ -1400,7 +1419,7 @@ public final class MainActivity extends Activity implements
             map.setCustomMapStyle(style);
         } else map.setCustomMapStyle(new CustomMapStyleOptions().setEnable(false));
         map.setTrafficEnabled(p.getBoolean("traffic", true));
-        boolean threed = p.getBoolean("view3d", true);
+        boolean threed = mapboxGuiding || p.getBoolean("view3d", true);
         try {
             map.getUiSettings().setRotateGesturesEnabled(
                 !(p.getBoolean("lock_2d",false) && !threed));
@@ -1414,7 +1433,8 @@ public final class MainActivity extends Activity implements
         map.showMapText(p.getBoolean("labels",true));
         CameraPosition current = map.getCameraPosition();
         map.moveCamera(CameraUpdateFactory.newCameraPosition(
-                new CameraPosition.Builder(current).tilt(threed ? 40f : 0f).build()));
+                new CameraPosition.Builder(current).tilt(
+                    mapboxGuiding?56f:threed?40f:0f).build()));
         // Map controls stay in the two-button surface; individual layers are edited in a sheet.
         if (myMarker != null) {
             myMarker.setFlat(true);
@@ -1423,6 +1443,7 @@ public final class MainActivity extends Activity implements
     }
 
     private BitmapDescriptor currentMarkerIcon() {
+        if(mapboxGuiding && activeVehicleIcon!=null)return activeVehicleIcon;
         return NavigationMarkerFactory.make(this,getViewPrefs());
     }
 
@@ -1461,7 +1482,8 @@ public final class MainActivity extends Activity implements
             homePanel.getVisibility()==View.VISIBLE;
         top.setVisibility(mapboxGuiding?View.GONE:
             (onHome && bottom?View.GONE:View.VISIBLE));
-        homeSearch.setVisibility(bottom?View.VISIBLE:View.GONE);
+        homeSearch.setVisibility(mapboxGuiding?View.GONE:
+            (bottom?View.VISIBLE:View.GONE));
         boolean landscape=getResources().getConfiguration().orientation==
             Configuration.ORIENTATION_LANDSCAPE;
         View secondRow=findViewById(R.id.homeSecondaryModes);
@@ -2107,7 +2129,7 @@ public final class MainActivity extends Activity implements
                 CameraPosition current=map.getCameraPosition();
                 CameraPosition.Builder follow=new CameraPosition.Builder(current)
                     .target(myLocation).zoom(Math.max(16.5f,current.zoom))
-                    .tilt(getViewPrefs().getBoolean("view3d",true)?48f:0f);
+                    .tilt(mapboxGuiding?56f:getViewPrefs().getBoolean("view3d",true)?48f:0f);
                 map.animateCamera(CameraUpdateFactory.newCameraPosition(follow.build()));
             }
             TextView phase=findViewById(R.id.activeNavPhase);
