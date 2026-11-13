@@ -60,7 +60,18 @@ public final class TripStore {
             e.putFloat("heading_degrees",fix.getBearing())
              .putLong("heading_time",System.currentTimeMillis());
         }
+        if(fix.hasSpeed() && Float.isFinite(fix.getSpeed()) && fix.getSpeed()>=0f && fix.getSpeed()<90f) {
+            e.putFloat("speed_mps",fix.getSpeed())
+             .putLong("speed_time",System.currentTimeMillis());
+        }
         e.apply();
+    }
+    /** Meters per second. Negative means no fresh speed sample. */
+    public static float speedMps(Context c) {
+        SharedPreferences p=prefs(c);
+        long age=System.currentTimeMillis()-p.getLong("speed_time",0L);
+        if(age<0 || age>15000L) return -1f;
+        return p.getFloat("speed_mps",-1f);
     }
     /** -1 indicates no fresh, moving-device heading. */
     public static float heading(Context c) {

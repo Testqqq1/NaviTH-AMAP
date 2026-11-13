@@ -54,8 +54,9 @@ public final class AmapManeuverMap {
 
     /** Largest exit index accepted from a caller. Larger values are ignored. */
     public static final int MAX_ROUNDABOUT_EXIT = 20;
-    private static final int CUE_LIMIT = 140;
-    private static final int ROAD_LIMIT = 72;
+    /** Host cards clip a long Thai cue to about two short lines. */
+    static final int CUE_LIMIT = 42;
+    private static final int ROAD_LIMIT = 18;
 
     private AmapManeuverMap() {}
 

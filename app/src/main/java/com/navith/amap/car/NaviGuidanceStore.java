@@ -34,6 +34,7 @@ public final class NaviGuidanceStore {
         prefs(c).edit().remove("navi_road").remove("navi_next_m")
             .remove("navi_left_m").remove("navi_left_s")
             .remove("navi_icon").remove("navi_exit").remove("navi_lanes")
+            .remove("navi_cur_road").remove("navi_tolls").remove("navi_traffic").remove("navi_route_m")
             .putLong("navi_updated",0L).apply();
         phase(c,"planning",false,"กำลังเตรียมนำทาง");
     }
@@ -50,6 +51,7 @@ public final class NaviGuidanceStore {
         prefs(c).edit().remove("navi_road").remove("navi_next_m")
             .remove("navi_left_m").remove("navi_left_s")
             .remove("navi_icon").remove("navi_exit").remove("navi_lanes")
+            .remove("navi_cur_road").remove("navi_tolls").remove("navi_traffic").remove("navi_route_m")
             .putLong("navi_updated",0L).apply();
         phase(c,"rerouting",true,"กำลังคำนวณเส้นทางใหม่");
     }
@@ -64,11 +66,12 @@ public final class NaviGuidanceStore {
         prefs(c).edit().remove("navi_road").remove("navi_next_m")
             .remove("navi_left_m").remove("navi_left_s")
             .remove("navi_icon").remove("navi_exit").remove("navi_lanes")
+            .remove("navi_cur_road").remove("navi_tolls").remove("navi_traffic").remove("navi_route_m")
             .putLong("navi_updated",0L).apply();
     }
     /** Called only for NaviInfo from the vendor navigation engine while active. */
     public static void update(Context c,String nextRoad,int nextMeters,int leftMeters,int leftSeconds,
-                              int iconType,String exitLabel) {
+                              int iconType,String exitLabel,String currentRoad) {
         if (!prefs(c).getBoolean("navi_running",false))return;
         if(nextRoad==null || nextRoad.trim().isEmpty() || nextMeters<0 ||
             nextMeters>100000 || leftMeters<0 || leftMeters>500000 ||
@@ -79,8 +82,11 @@ public final class NaviGuidanceStore {
         boolean passedManeuver=previousNext>=0 && nextMeters>previousNext+80;
         String exit=exitLabel==null?"":exitLabel.trim();
         if(exit.length()>80) exit=exit.substring(0,80);
+        String current=currentRoad==null?"":currentRoad.trim();
+        if(current.length()>80) current=current.substring(0,80);
         android.content.SharedPreferences.Editor editor=p.edit()
             .putString("navi_road",nextRoad.substring(0,Math.min(120,nextRoad.length())))
+            .putString("navi_cur_road",current)
             .putInt("navi_next_m",nextMeters)
             .putInt("navi_left_m",leftMeters)
             .putInt("navi_left_s",leftSeconds)
@@ -106,6 +112,18 @@ public final class NaviGuidanceStore {
         prefs(c).edit().remove("navi_lanes")
             .putLong(EVENT,System.currentTimeMillis()).apply();
     }
+    /** Encoded toll gates from onServiceAreaUpdate. Empty hides the panel. */
+    public static void setTolls(Context c, String encoded) {
+        if(encoded==null || encoded.length()>300) return;
+        prefs(c).edit().putString("navi_tolls", encoded)
+            .putLong(EVENT, System.currentTimeMillis()).apply();
+    }
+    /** Traffic segments plus the full route length, from the navigation path. */
+    public static void setTraffic(Context c, int totalMeters, String encoded) {
+        if(encoded==null || encoded.length()>600 || totalMeters<0 || totalMeters>2000000) return;
+        prefs(c).edit().putString("navi_traffic", encoded).putInt("navi_route_m", totalMeters)
+            .putLong(EVENT, System.currentTimeMillis()).apply();
+    }
     public static Snapshot fresh(Context c) {
         SharedPreferences p=prefs(c);
         long age=System.currentTimeMillis()-p.getLong("navi_updated",0L);
@@ -114,9 +132,14 @@ public final class NaviGuidanceStore {
         if(road==null || road.isEmpty())return null;
         String exit=p.getString("navi_exit","");
         String lanes=p.getString("navi_lanes","");
+        String current=p.getString("navi_cur_road","");
+        String tolls=p.getString("navi_tolls","");
+        String traffic=p.getString("navi_traffic","");
         return new Snapshot(road,p.getInt("navi_next_m",-1),
             p.getInt("navi_left_m",-1),p.getInt("navi_left_s",-1),
-            p.getInt("navi_icon",-1),exit==null?"":exit,lanes==null?"":lanes);
+            p.getInt("navi_icon",-1),exit==null?"":exit,lanes==null?"":lanes,
+            current==null?"":current,tolls==null?"":tolls,traffic==null?"":traffic,
+            p.getInt("navi_route_m",0));
     }
     public static final class Snapshot {
         public final String nextRoad;
@@ -125,9 +148,15 @@ public final class NaviGuidanceStore {
         public final int iconType;
         public final String exitLabel;
         public final String lanes;
-        private Snapshot(String road,int next,int remain,int seconds,int icon,String exit,String laneText) {
+        public final String currentRoad;
+        public final String tolls;
+        public final String traffic;
+        public final int routeMeters;
+        private Snapshot(String road,int next,int remain,int seconds,int icon,String exit,String laneText,
+                         String current,String tollText,String trafficText,int routeMeters) {
             nextRoad=road;nextMeters=next;remainingMeters=remain;remainingSeconds=seconds;
             iconType=icon;exitLabel=exit;lanes=laneText;
+            currentRoad=current;tolls=tollText;traffic=trafficText;this.routeMeters=routeMeters;
         }
     }
 }

@@ -142,8 +142,15 @@ public final class NavSdkBridge {
                                     int seconds=asInt(info,"getPathRetainTime");
                                     int icon=asInt(info,"getIconType");
                                     NaviGuidanceStore.update(context,road,next,remaining,seconds,
-                                        icon,exitLabel(info));
+                                        icon,exitLabel(info),asString(info,"getCurrentRoadName"));
                                 }
+                                break;
+                            case "onServiceAreaUpdate":
+                                if(args!=null && args.length>0 && args[0] instanceof Object[])
+                                    publishTolls(context,(Object[])args[0]);
+                                break;
+                            case "onTrafficStatusUpdate":
+                                publishTraffic(context);
                                 break;
                             case "showLaneInfo":
                                 if(args!=null) publishLanes(context,args);
@@ -263,6 +270,51 @@ public final class NavSdkBridge {
             return out;
         }
         return null;
+    }
+
+    /** Toll gates only. Service areas and cameras stay off this panel. */
+    private static void publishTolls(Context context, Object[] facilities) {
+        int n=Math.min(facilities.length, 8);
+        int[] types=new int[n];
+        int[] distances=new int[n];
+        String[] names=new String[n];
+        int count=0;
+        for(Object facility:facilities) {
+            if(facility==null || count>=n) continue;
+            types[count]=asInt(facility,"getType");
+            distances[count]=asInt(facility,"getRemainDist");
+            names[count]=asString(facility,"getName");
+            count++;
+        }
+        if(count<n) {
+            types=java.util.Arrays.copyOf(types,count);
+            distances=java.util.Arrays.copyOf(distances,count);
+            names=java.util.Arrays.copyOf(names,count);
+        }
+        NaviGuidanceStore.setTolls(context, com.navith.amap.car.CarHud.encodeTolls(
+                com.navith.amap.car.CarHud.tolls(types,distances,names)));
+    }
+
+    private static void publishTraffic(Context context) {
+        if(guidanceEngine==null) return;
+        try {
+            Object path=guidanceEngine.getClass().getMethod("getNaviPath").invoke(guidanceEngine);
+            if(path==null) return;
+            int total=asInt(path,"getAllLength");
+            Object raw=path.getClass().getMethod("getTrafficStatuses").invoke(path);
+            java.util.ArrayList<com.navith.amap.car.CarHud.Segment> segments=new java.util.ArrayList<>();
+            if(raw instanceof List) {
+                for(Object status:(List<?>)raw) {
+                    if(status==null || segments.size()>=24) continue;
+                    segments.add(new com.navith.amap.car.CarHud.Segment(
+                            asInt(status,"getStatus"), asInt(status,"getLength")));
+                }
+            }
+            NaviGuidanceStore.setTraffic(context, Math.max(0,total),
+                    com.navith.amap.car.CarHud.encodeTraffic(segments));
+        } catch(ReflectiveOperationException e) {
+            Log.d("NaviTH/Navigation","Traffic status unavailable");
+        }
     }
 
     private static void shareNavigationPosition(Context context,Object location) {

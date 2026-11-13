@@ -7,6 +7,7 @@ import android.location.Location;
 
 import com.amap.api.maps.model.LatLng;
 import com.navith.amap.car.AmapLaneMap;
+import com.navith.amap.car.CarHud;
 import com.navith.amap.car.AmapManeuverMap;
 import com.navith.amap.car.NaviGuidanceStore;
 import com.navith.amap.car.TripStore;
@@ -28,7 +29,7 @@ public final class GuidancePreviewReceiver extends BroadcastReceiver {
         context.getSharedPreferences("navith_consent", Context.MODE_PRIVATE)
                 .edit().putBoolean("consent", true).commit();
         context.getSharedPreferences("navith_view", Context.MODE_PRIVATE)
-                .edit().putString("language", "th")
+                .edit().putString("language", "en")
                 .putString("theme", "night")
                 .putBoolean("view3d", true)
                 .putBoolean("traffic", false)
@@ -62,7 +63,7 @@ public final class GuidancePreviewReceiver extends BroadcastReceiver {
     private static void drive(Context context, int icon, String road, int nextMeters,
                               int leftMeters, int leftSeconds, String exit) {
         NaviGuidanceStore.started(context);
-        NaviGuidanceStore.update(context, road, nextMeters, leftMeters, leftSeconds, icon, exit);
+        NaviGuidanceStore.update(context, road, nextMeters, leftMeters, leftSeconds, icon, exit, "สุขุมวิท");
     }
 
     private static void lanes(Context context, int[] background, int[] front) {
@@ -82,11 +83,19 @@ public final class GuidancePreviewReceiver extends BroadcastReceiver {
         fix.setLatitude(path.get(0).latitude);
         fix.setLongitude(path.get(0).longitude);
         fix.setAccuracy(12f);
-        fix.setSpeed(9f);
+        fix.setSpeed(20f);
         fix.setBearing(305f);
         fix.setTime(System.currentTimeMillis());
         TripStore.setLocation(context, fix);
         TripStore.setDestination(context, path.get(path.size() - 1), "สยามพารากอน");
-        TripStore.setRoute(context, path, 4200f, 720, "รถยนต์");
+        TripStore.setRoute(context, path, 12000f, 900, "รถยนต์");
+        NaviGuidanceStore.setTolls(context, CarHud.encodeTolls(java.util.Arrays.asList(
+                new CarHud.Toll(7000, "Toll"),
+                new CarHud.Toll(18000, "Toll"))));
+        NaviGuidanceStore.setTraffic(context, 12000, CarHud.encodeTraffic(java.util.Arrays.asList(
+                new CarHud.Segment(CarHud.TRAFFIC_SMOOTH, 5000),
+                new CarHud.Segment(CarHud.TRAFFIC_SLOW, 3000),
+                new CarHud.Segment(CarHud.TRAFFIC_JAM, 2000),
+                new CarHud.Segment(CarHud.TRAFFIC_SMOOTH, 2000))));
     }
 }

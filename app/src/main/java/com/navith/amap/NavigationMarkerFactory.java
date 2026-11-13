@@ -67,6 +67,44 @@ public final class NavigationMarkerFactory {
         }
     }
 
+    /** North-up compass ring. Leave its marker rotation at 0 so N tracks map north. */
+    public static Bitmap compassRing() {
+        int size=280;
+        Bitmap bitmap=Bitmap.createBitmap(size,size,Bitmap.Config.ARGB_8888);
+        Canvas canvas=new Canvas(bitmap);
+        float c=size/2f;
+        canvas.drawCircle(c,c,118f,fill(0x66101824));
+        canvas.drawCircle(c,c,112f,outline(0xEEFFFFFF,7f));
+        canvas.drawCircle(c,c,86f,outline(0x66FFFFFF,3f));
+        Paint tick=outline(0xFFFFFFFF,4f);
+        for(int i=0;i<72;i++){
+            canvas.save();
+            canvas.rotate(i*5f,c,c);
+            canvas.drawLine(c,c-112f,c,c-(i%6==0?96f:104f),tick);
+            canvas.restore();
+        }
+        Paint label=fill(0xFFFFFFFF);
+        label.setTextAlign(Paint.Align.CENTER);
+        label.setTextSize(28f);
+        label.setFakeBoldText(true);
+        canvas.drawText("N",c,c-96f,label);
+        label.setColor(0xFFD0D6DC);
+        canvas.drawText("E",c+104f,c+10f,label);
+        canvas.drawText("S",c,c+112f,label);
+        canvas.drawText("W",c-104f,c+10f,label);
+        return bitmap;
+    }
+
+    /** Perspective car used on the car surface, nose toward bitmap-up (north when rotation is 0). */
+    public static Bitmap drivingCar() {
+        Bitmap bitmap=Bitmap.createBitmap(SIZE,SIZE,Bitmap.Config.ARGB_8888);
+        Canvas canvas=new Canvas(bitmap);
+        canvas.translate(SIZE/2f,SIZE/2f);
+        drawShadow(canvas);
+        drawCar(canvas,3,true);
+        return bitmap;
+    }
+
     public static float angleForBearing(float bearing) {
         if(!Float.isFinite(bearing))return 0f;
         // AMAP's marker rotation uses the inverse clockwise convention.

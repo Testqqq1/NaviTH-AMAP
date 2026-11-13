@@ -124,7 +124,7 @@ public class AmapManeuverMapTest {
         assertEquals("Turn left", AmapManeuverMap.cue(left, "  ", null, false));
         String longRoad = "ถนน".repeat(80);
         String limited = AmapManeuverMap.cue(left, longRoad, null, true);
-        assertTrue(limited.codePointCount(0, limited.length()) <= 140);
+        assertTrue(limited.codePointCount(0, limited.length()) <= AmapManeuverMap.CUE_LIMIT);
         assertTrue(limited.startsWith("เลี้ยวซ้าย"));
         assertEquals("Sukhumvit", AmapManeuverMap.road("  Sukhumvit\n"));
     }
