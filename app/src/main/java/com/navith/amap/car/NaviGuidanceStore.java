@@ -7,7 +7,8 @@ import android.content.SharedPreferences;
  * Single-process, opt-in read-only handoff of REAL AMap Navigation SDK callbacks
  * from the phone navigation component to Android Auto.
  *
- * RouteSearch previews never populate this store. Stale guidance is discarded.
+ * Thailand guidance is published here by RouteGuide from a Route Search path.
+ * Stale guidance is discarded.
  */
 public final class NaviGuidanceStore {
     public static final String EVENT = "navi_guidance";

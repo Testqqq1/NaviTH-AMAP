@@ -92,6 +92,7 @@ import com.amap.api.services.route.DriveRouteResult;
 import com.amap.api.services.route.DriveStep;
 import com.amap.api.services.route.RideRouteResult;
 import com.amap.api.services.route.RouteSearch;
+import com.amap.api.services.route.TMC;
 import com.amap.api.services.route.WalkPath;
 import com.amap.api.services.route.WalkRouteResult;
 import com.amap.api.services.route.WalkStep;
@@ -166,6 +167,14 @@ public final class MainActivity extends Activity implements
     private LinearLayout homePanel,homeRecentList,homeExpanded;
     private boolean homeOpen=false;
     private boolean hasRoutePreview=false;
+    private RouteGuide.Route activeRoute;
+    private boolean guiding;
+    private boolean guideEmulator;
+    private boolean guidanceReroute;
+    private int offRouteStreak;
+    private double emulatorMeters;
+    private long emulatorTickAt;
+    private final Runnable guideTick=this::tickGuidance;
     private final Handler uiHandler=new Handler(Looper.getMainLooper());
     private Runnable dismissStatus;
     private RadioGroup modeGroup;
@@ -355,6 +364,8 @@ public final class MainActivity extends Activity implements
             LinearLayout alt=findViewById(R.id.routeAlternatives);
             if(alt!=null)alt.removeAllViews();
             if (destination != null) {
+                if (guiding) stopLocalGuidance();
+                activeRoute=null;
                 hasRoutePreview=false;
                 findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
                 View emulator=findViewById(R.id.emulatorNavigationButton);
@@ -511,6 +522,7 @@ public final class MainActivity extends Activity implements
         LocationFixGate.Verdict verdict = LocationFixGate.evaluate(
                 SystemClock.elapsedRealtimeNanos(), fix.getElapsedRealtimeNanos(),
                 System.currentTimeMillis(), fix.getTime(), reported, live);
+        if (guideEmulator && (source == null || !source.contains("จำลอง"))) return;
         if (!verdict.accept) return;
         float accuracy = reported > 0f ? reported : 150f;
         long now = SystemClock.elapsedRealtime();
@@ -570,6 +582,7 @@ public final class MainActivity extends Activity implements
                 Math.round(accuracy)+(NaviLocale.thai(this)?" เมตร":" meters"));
         }
         if (first) status(tr("พบพิกัดจาก ","Location from ")+source);
+        if (guiding && !guideEmulator) publishGuidance(fix.getLatitude(), fix.getLongitude());
     }
 
     private void updatePositionMarker(Location fix) {
@@ -932,6 +945,8 @@ public final class MainActivity extends Activity implements
         destinationMarker.showInfoWindow();
         destinationText.setText(label);
         routeSummary.setText(tr("เลือกจุดหมายแล้ว • ดูเส้นทาง","Destination selected · View route"));
+        if (guiding) stopLocalGuidance();
+        activeRoute=null;
         hasRoutePreview=false;
         findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
         View selectedEmulator=findViewById(R.id.emulatorNavigationButton);
@@ -974,12 +989,6 @@ public final class MainActivity extends Activity implements
     }
 
     private void beginNavigation(boolean emulator) {
-        if("planning".equals(NaviGuidanceStore.phase(this)))return;
-        if(!emulator && NaviGuidanceStore.isNavigating(this)) {
-            NavSdkBridge.stopNavigation(this);
-            refreshNavigationAction();
-            return;
-        }
         if(!hasRoutePreview || destination==null) {
             status(tr("คำนวณเส้นทางก่อนเริ่มนำทาง",
                 "Calculate a route before starting navigation"));
@@ -990,24 +999,201 @@ public final class MainActivity extends Activity implements
                 "Turn-by-turn is available for driving only"));
             return;
         }
-        if(!hasFineLocation()) requestPreciseIfApproximate();
-        if(myLocation==null) {
+        if(!emulator && (guiding || NaviGuidanceStore.isNavigating(this))) {
+            stopLocalGuidance();
+            NavSdkBridge.stopNavigation(this);
+            refreshNavigationAction();
+            updateLiveGuidanceState();
+            return;
+        }
+        if(!hasFineLocation() && !emulator) requestPreciseIfApproximate();
+        if(myLocation==null && !emulator) {
             status(tr("GPS ไม่พร้อมหรือพิกัดเก่า • กำลังค้นหาตำแหน่งใหม่",
                 "GPS unavailable, inaccurate or stale · acquiring a fresh fix"));
             if(hasLocationPermission()) locateOnce();
             else { locationRequested=false; askForLocation(); }
             return;
         }
-        if(!hasFreshAccurateFix()) {
-            status(tr("เริ่มนำทางด้วยตำแหน่งล่าสุด • AMAP จะค้นหา GPS ต่อ",
-                "Starting from the latest position · AMAP will keep acquiring GPS"));
+        if(activeRoute==null) {
+            status(tr("ยังไม่มีเส้นทางขับรถสำหรับนำทาง","Calculate a driving route first"));
+            return;
         }
         boolean debug=(getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0;
-        if(emulator && debug) {
-            NavSdkBridge.openEmulator(this, myLocation, destination);
-        } else {
-            NavSdkBridge.openRoute(this,destination,destinationName,destinationPoiId);
+        startLocalGuidance(emulator && debug);
+    }
+
+    /** Drive steps from the Route Search path that already drew the Thailand line. */
+    private void rememberGuide(DrivePath path) {
+        if (path == null || path.getSteps() == null) {
+            activeRoute = null;
+            return;
         }
+        java.util.ArrayList<RouteGuide.Leg> legs = new java.util.ArrayList<>();
+        java.util.ArrayList<com.navith.amap.car.CarHud.Segment> traffic = new java.util.ArrayList<>();
+        for (DriveStep step : path.getSteps()) {
+            java.util.List<com.amap.api.services.core.LatLonPoint> line = step.getPolyline();
+            if (line == null || line.size() < 2) continue;
+            double[] lats = new double[line.size()];
+            double[] lons = new double[line.size()];
+            for (int i = 0; i < line.size(); i++) {
+                lats[i] = line.get(i).getLatitude();
+                lons[i] = line.get(i).getLongitude();
+            }
+            legs.add(new RouteGuide.Leg(lats, lons, step.getRoad(), step.getAction(),
+                    Math.round(step.getDuration())));
+            java.util.List<TMC> tmcs = step.getTMCs();
+            if (tmcs == null) continue;
+            for (TMC tmc : tmcs) {
+                if (tmc == null || tmc.getDistance() <= 0 || traffic.size() >= 24) continue;
+                traffic.add(new com.navith.amap.car.CarHud.Segment(
+                        RouteGuide.trafficStatus(tmc.getStatus()), tmc.getDistance()));
+            }
+        }
+        activeRoute = RouteGuide.compile(legs, destinationName, Math.round(path.getDuration()));
+        if (activeRoute != null) {
+            NaviGuidanceStore.setTraffic(this, (int) Math.min(Integer.MAX_VALUE, Math.round(activeRoute.lengthMeters())),
+                    com.navith.amap.car.CarHud.encodeTraffic(traffic));
+        }
+    }
+
+    private void applyGuidancePath(DrivePath path, boolean quiet) {
+        java.util.List<LatLng> points = new java.util.ArrayList<>();
+        if (path.getSteps() != null) {
+            for (DriveStep step : path.getSteps()) appendPolyline(points, step.getPolyline());
+        }
+        rememberGuide(path);
+        if (points.size() >= 2 && map != null) {
+            clearRouteLine();
+            routeLine = map.addPolyline(new PolylineOptions().addAll(points)
+                    .width(dp(5)).color(getColor(R.color.nav_route)).zIndex(2));
+        }
+        hasRoutePreview = activeRoute != null;
+        if (points.size() >= 2) {
+            TripStore.setRoute(this, points, path.getDistance(), path.getDuration(),
+                    NaviLocale.text(this, "รถยนต์", "Driving"));
+        }
+        if (!quiet && destination != null) {
+            drawRoute(points, path.getDistance(), path.getDuration(),
+                    NaviLocale.text(this, "รถยนต์", "Driving"));
+        }
+        if (guiding && activeRoute != null && myLocation != null) {
+            NaviGuidanceStore.started(this);
+            publishGuidance(myLocation.latitude, myLocation.longitude);
+        }
+        updateLiveGuidanceState();
+        refreshNavigationAction();
+    }
+
+    private void startLocalGuidance(boolean emulator) {
+        if (activeRoute == null) return;
+        guiding = true;
+        guideEmulator = emulator;
+        guidanceReroute = false;
+        offRouteStreak = 0;
+        emulatorMeters = 0;
+        emulatorTickAt = 0;
+        uiHandler.removeCallbacks(guideTick);
+        NaviGuidanceStore.started(this);
+        if (emulator) {
+            status(tr("จำลองการเคลื่อนที่ตามเส้นทาง ไม่ใช้หน้าจอของ AMAP",
+                    "Simulating movement along the route, without the AMAP page"));
+            tickGuidance();
+        } else {
+            status(tr("เริ่มนำทางตามเส้นทางบนแผนที่",
+                    "Guiding along the route on the map"));
+            if (myLocation != null) publishGuidance(myLocation.latitude, myLocation.longitude);
+            uiHandler.postDelayed(guideTick, 1000);
+        }
+        refreshNavigationAction();
+        updateLiveGuidanceState();
+    }
+
+    private void tickGuidance() {
+        if (!guiding || activeRoute == null) return;
+        if (guideEmulator) {
+            long now = SystemClock.elapsedRealtime();
+            double dt = emulatorTickAt == 0 ? 1.0 : Math.min(2.0, (now - emulatorTickAt) / 1000.0);
+            emulatorTickAt = now;
+            emulatorMeters += 20.0 * dt;
+            if (emulatorMeters >= activeRoute.lengthMeters()) {
+                NaviGuidanceStore.arrived(this);
+                guiding = false;
+                guideEmulator = false;
+                updateLiveGuidanceState();
+                refreshNavigationAction();
+                return;
+            }
+            double[] pose = activeRoute.poseAt(emulatorMeters);
+            Location fix = new Location("จำลอง");
+            fix.setLatitude(pose[0]);
+            fix.setLongitude(pose[1]);
+            fix.setTime(System.currentTimeMillis());
+            fix.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
+            fix.setAccuracy(5f);
+            fix.setSpeed(20f);
+            fix.setBearing((float) pose[2]);
+            acceptLocation(fix, "จำลอง");
+            publishGuidance(pose[0], pose[1]);
+        } else if (myLocation != null) {
+            publishGuidance(myLocation.latitude, myLocation.longitude);
+        }
+        uiHandler.postDelayed(guideTick, 1000);
+    }
+
+    private void publishGuidance(double latitude, double longitude) {
+        if (!guiding || activeRoute == null) return;
+        RouteGuide.Progress progress = activeRoute.follow(latitude, longitude);
+        if (progress.arrived) {
+            NaviGuidanceStore.arrived(this);
+            guiding = false;
+            guideEmulator = false;
+            uiHandler.removeCallbacks(guideTick);
+            updateLiveGuidanceState();
+            refreshNavigationAction();
+            return;
+        }
+        if (progress.offRoute && !guideEmulator) {
+            offRouteStreak++;
+            if (offRouteStreak >= 3 && !guidanceReroute) {
+                guidanceReroute = true;
+                NaviGuidanceStore.rerouting(this);
+                updateLiveGuidanceState();
+                rerouteFromHere();
+            }
+            return;
+        }
+        offRouteStreak = 0;
+        int next = Math.min(99999, Math.max(0, progress.nextMeters));
+        int left = Math.min(499000, Math.max(0, progress.remainingMeters));
+        int seconds = Math.min(172000, Math.max(0, progress.remainingSeconds));
+        String road = progress.nextRoad == null || progress.nextRoad.isEmpty() ? "จุดหมาย" : progress.nextRoad;
+        NaviGuidanceStore.update(this, road, next, left, seconds, progress.iconType, "", progress.currentRoad);
+        updateLiveGuidanceState();
+    }
+
+    private void rerouteFromHere() {
+        if (destination == null || myLocation == null || routeSearch == null) {
+            guidanceReroute = false;
+            return;
+        }
+        try {
+            RouteSearch.FromAndTo fromAndTo = new RouteSearch.FromAndTo(
+                    toPoint(myLocation), toPoint(destination));
+            routeSearch.calculateDriveRouteAsyn(new RouteSearch.DriveRouteQuery(
+                    fromAndTo, routeStrategy(), null, null, ""));
+        } catch (Exception e) {
+            guidanceReroute = false;
+            status(tr("คำนวณทางใหม่ไม่ได้","Could not calculate a new route"));
+        }
+    }
+
+    private void stopLocalGuidance() {
+        guiding = false;
+        guideEmulator = false;
+        guidanceReroute = false;
+        offRouteStreak = 0;
+        uiHandler.removeCallbacks(guideTick);
+        NaviGuidanceStore.stopped(this);
     }
 
     private void calculateRoute() {
@@ -1031,6 +1217,8 @@ public final class MainActivity extends Activity implements
             status(tr("บริการคำนวณเส้นทางยังไม่พร้อม","Route service unavailable"));
             return;
         }
+        if (guiding) stopLocalGuidance();
+        activeRoute = null;
         clearRouteLine();
         TripStore.clearRoute(this);
         routeSummary.setText(tr("กำลังคำนวณเส้นทาง…","Calculating route…"));
@@ -1060,7 +1248,19 @@ public final class MainActivity extends Activity implements
         runOnUiThread(() -> {
             if (!initialized || isFinishing() || destination == null) return;
             if (code != 1000 || result == null || result.getPaths() == null || result.getPaths().isEmpty()) {
+                if (guidanceReroute) {
+                    guidanceReroute = false;
+                    offRouteStreak = 0;
+                    status(tr("ออกนอกเส้นทางแล้ว แต่ยังคำนวณทางใหม่ไม่ได้","Off the route, and a new one could not be calculated"));
+                    return;
+                }
                 routeFailed(code);
+                return;
+            }
+            if (guidanceReroute) {
+                guidanceReroute = false;
+                offRouteStreak = 0;
+                applyGuidancePath(result.getPaths().get(0), true);
                 return;
             }
             showDriveRoutes(result.getPaths());
@@ -1075,6 +1275,7 @@ public final class MainActivity extends Activity implements
                 routeFailed(code);
                 return;
             }
+            activeRoute = null;
             WalkPath path = result.getPaths().get(0);
             List<LatLng> points = new ArrayList<>();
             for (WalkStep step : path.getSteps()) appendPolyline(points, step.getPolyline());
@@ -1121,6 +1322,7 @@ public final class MainActivity extends Activity implements
         if(path.getSteps()!=null)
             for(DriveStep step:path.getSteps())
                 appendPolyline(points,step.getPolyline());
+        rememberGuide(path);
         drawRoute(points,path.getDistance(),path.getDuration(),
             NaviLocale.text(this,"รถยนต์","Driving"));
         if(path.getTolls()>0){
@@ -1151,7 +1353,9 @@ public final class MainActivity extends Activity implements
             .format(new Date(System.currentTimeMillis()+Math.max(0L,seconds)*1000L));
         TextView etaText=findViewById(R.id.etaText);
         if(etaText!=null)etaText.setText(NaviLocale.text(this,"คาดว่าจะถึงประมาณ ","Estimated arrival ")+eta
-            +NaviLocale.text(this," • ตัวอย่างเส้นทาง ยังไม่มีเสียงนำทาง"," • Route preview, no turn-by-turn guidance"));
+            +(guiding
+                ? NaviLocale.text(this," • นำทางตามเส้นทางนี้"," • Guided along this route")
+                : NaviLocale.text(this," • กดเริ่มนำทางเพื่อเลี้ยวตามเส้นทาง"," • Tap Start navigation for turn-by-turn")));
         routeSummary.setText(mode + "  •  " + km + "  •  " + time);
         ((Button)findViewById(R.id.routeButton)).setText(R.string.change_route);
         hasRoutePreview=true;
@@ -1165,6 +1369,8 @@ public final class MainActivity extends Activity implements
     }
 
     private void routeFailed(int code) {
+        if (guiding) stopLocalGuidance();
+        activeRoute = null;
         hasRoutePreview=false;
         findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
         View failedEmulator=findViewById(R.id.emulatorNavigationButton);
@@ -1187,6 +1393,8 @@ public final class MainActivity extends Activity implements
     }
 
     private void clearDestination() {
+        if (guiding) stopLocalGuidance();
+        activeRoute = null;
         clearRouteLine();
         destination = null;
         destinationName = "";
@@ -1838,6 +2046,9 @@ public final class MainActivity extends Activity implements
             updateLocationMarkerVisibility();
         }
         if (initialized) {
+            if ("planning".equals(NaviGuidanceStore.phase(this)) && !guiding) {
+                NaviGuidanceStore.stopped(this);
+            }
             refreshNavigationAction();
             updateLiveGuidanceState();
             showNavigationStateOnce();
@@ -1845,7 +2056,7 @@ public final class MainActivity extends Activity implements
         if (initialized && hasLocationPermission()) locateOnce();
     }
 
-    /** Render only live SDK guidance, never reuse RouteSearch preview as turn instructions. */
+    /** Phone guidance comes from RouteGuide progress published into the shared store. */
     private void updateLiveGuidanceState() {
         if(routePanel==null || destination==null)return;
         String phase=NaviGuidanceStore.phase(this);
@@ -1887,6 +2098,10 @@ public final class MainActivity extends Activity implements
         if(b==null)return;
         boolean running=NaviGuidanceStore.isNavigating(this);
         boolean launching="planning".equals(NaviGuidanceStore.phase(this));
+        if (launching) {
+            long startedAt=com.navith.amap.car.TripStore.prefs(this).getLong("navi_phase_at",0L);
+            if (System.currentTimeMillis()-startedAt>20000L) launching=false;
+        }
         b.setEnabled(!launching);
         boolean driving=modeGroup.getCheckedRadioButtonId()!=R.id.modeWalk;
         b.setVisibility((running || hasRoutePreview) && driving ? View.VISIBLE:View.GONE);
@@ -1926,6 +2141,7 @@ public final class MainActivity extends Activity implements
     }
 
     @Override protected void onDestroy() {
+        stopLocalGuidance();
         TripStore.prefs(this).unregisterOnSharedPreferenceChangeListener(tripChanges);
         if (locationClient != null) {
             locationClient.stopLocation();

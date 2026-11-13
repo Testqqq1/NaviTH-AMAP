@@ -31,6 +31,11 @@ public final class NavSdkBridge {
     private static Object guidanceEngine;
     /** Debug builds only. Start {@code NaviType.EMULATOR} after the next route success. */
     private static volatile boolean pendingEmulator;
+    /**
+     * The built-in page is Chinese and its driving calc rejects Thailand with
+     * error 3. Phone and Android Auto use {@link RouteGuide} instead.
+     */
+    private static boolean openVendorPage;
 
     public static boolean isInstalled() {
         try {
@@ -132,7 +137,7 @@ public final class NavSdkBridge {
                                 pendingEmulator=false;
                                 int code=(args!=null && args.length>0 && args[0]!=null)
                                     ?asInt(args[0],"getErrorCode"):-1;
-                                NaviGuidanceStore.failed(context,"คำนวณเส้นทางไม่สำเร็จ · AMAP "+code);
+                                NaviGuidanceStore.failed(context, NaviRouteErrors.thai(code));
                                 break;
                             case "onReCalculateRouteForYaw":
                             case "onReCalculateRouteForTrafficJam":
@@ -460,8 +465,7 @@ public final class NavSdkBridge {
             NaviGuidanceStore.stopped(activity.getApplicationContext());
         }catch(Throwable e){
             Log.e("NaviTH/Navigation","Cannot exit official component",e);
-            if(engineStopped) NaviGuidanceStore.stopped(activity.getApplicationContext());
-            else show(activity,"หยุดนำทางไม่ได้","กรุณากลับไปที่หน้าของ AMAP Navigation และกดยุติการนำทาง");
+            NaviGuidanceStore.stopped(activity.getApplicationContext());
         }
     }
 
@@ -549,6 +553,11 @@ public final class NavSdkBridge {
                     }
                     return null;
                 });
+            if (!openVendorPage) {
+                NaviGuidanceStore.failed(activity.getApplicationContext(), NaviRouteErrors.thai(3));
+                show(activity, "ไม่เปิดหน้าของ AMAP", NaviRouteErrors.thai(3));
+                return;
+            }
             NaviGuidanceStore.launching(activity.getApplicationContext());
             page.getMethod("showRouteActivity", Context.class, params, callback)
                 .invoke(singleton, activity, config, pageCallback);

@@ -227,8 +227,8 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
             return nav.build();
         }
         NaviGuidanceStore.Snapshot guidance=NaviGuidanceStore.fresh(getCarContext());
-        // A genuine vendor NaviInfo callback is the ONLY source of turn-by-turn
-        // guidance. The normal RouteSearch polyline remains a preview.
+        // Turn-by-turn is whatever NaviGuidanceStore last published: AMAP NaviInfo
+        // where that SDK can route, or RouteGuide along the Route Search line.
         if (guidance != null && !dest.isEmpty()) {
             followGps=true;
             RoutingInfo actual=CarGuidance.routing(getCarContext(),guidance);
