@@ -41,9 +41,7 @@ import androidx.car.app.navigation.model.MapWithContentTemplate;
 import androidx.car.app.navigation.model.MessageInfo;
 import androidx.car.app.navigation.model.NavigationTemplate;
 import androidx.car.app.navigation.model.RoutingInfo;
-import androidx.car.app.navigation.model.Step;
-import androidx.car.app.navigation.model.Maneuver;
-import androidx.car.app.model.Distance;
+import androidx.car.app.navigation.model.TravelEstimate;
 import androidx.lifecycle.Lifecycle;
 import androidx.lifecycle.LifecycleEventObserver;
 
@@ -74,8 +72,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Android Auto map-and-route-PREVIEW screen.
- * Not turn-by-turn navigation. Do NOT synthesize maneuvers/lanes from preview geometry.
+ * Android Auto map screen. Turn-by-turn instructions are shown only while a fresh
+ * AMAP NaviInfo callback is in {@link NaviGuidanceStore}. RouteSearch geometry is
+ * still a preview and is never turned into maneuvers or lanes.
  * AMap MapView on a virtual-display Surface is experimental and must be tested on DHU.
  */
 final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch.OnRouteSearchListener {
@@ -192,20 +191,28 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         else actionBar.addAction(new Action.Builder()
             .setTitle(tr("ล้าง","Clear"))
             .setOnClickListener(()->TripStore.clearDestination(getCarContext())).build());
+        if ("arrived".equals(NaviGuidanceStore.phase(getCarContext())) && !dest.isEmpty()) {
+            followGps=false;
+            NavigationTemplate.Builder nav=new NavigationTemplate.Builder()
+                .setActionStrip(actionBar.build())
+                .setNavigationInfo(CarGuidance.arrival(getCarContext(),dest));
+            TravelEstimate done=CarGuidance.arrivedEstimate();
+            if(done!=null) nav.setDestinationTravelEstimate(done);
+            if(getCarContext().getCarAppApiLevel()>=2) {
+                nav.setMapActionStrip(new ActionStrip.Builder().addAction(Action.PAN).build());
+            }
+            return nav.build();
+        }
         NaviGuidanceStore.Snapshot guidance=NaviGuidanceStore.fresh(getCarContext());
         // A genuine vendor NaviInfo callback is the ONLY source of turn-by-turn
         // guidance. The normal RouteSearch polyline remains a preview.
         if (guidance != null && !dest.isEmpty()) {
             followGps=true;
-            Step step=new Step.Builder(tr("ไปยัง ","Continue to ")+guidance.nextRoad)
-                .setRoad(guidance.nextRoad)
-                .setManeuver(new Maneuver.Builder(Maneuver.TYPE_UNKNOWN).build())
-                .build();
-            RoutingInfo actual=new RoutingInfo.Builder()
-                .setCurrentStep(step,Distance.create(guidance.nextMeters,Distance.UNIT_METERS))
-                .build();
+            RoutingInfo actual=CarGuidance.routing(getCarContext(),guidance);
             NavigationTemplate.Builder nav=new NavigationTemplate.Builder()
                 .setActionStrip(actionBar.build()).setNavigationInfo(actual);
+            TravelEstimate trip=CarGuidance.travelEstimate(guidance);
+            if(trip!=null) nav.setDestinationTravelEstimate(trip);
             if(getCarContext().getCarAppApiLevel()>=2) {
                 nav.setMapActionStrip(new ActionStrip.Builder().addAction(Action.PAN).build());
             }

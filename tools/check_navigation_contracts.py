@@ -9,6 +9,8 @@ trip=read("app/src/main/java/com/navith/amap/car/TripStore.java")
 factory=read("app/src/main/java/com/navith/amap/NavigationMarkerFactory.java")
 phone=read("app/src/main/java/com/navith/amap/MainActivity.java")
 car=read("app/src/main/java/com/navith/amap/car/NaviCarScreen.java")
+guidance=read("app/src/main/java/com/navith/amap/car/CarGuidance.java")
+icons=read("app/src/main/java/com/navith/amap/car/ManeuverIcons.java")
 settings=read("app/src/main/java/com/navith/amap/SettingsActivity.java")
 checks={
     "Real NAVI page, not just a ROUTE preview":'pageType.getField("NAVI")' in bridge,
@@ -24,6 +26,11 @@ checks={
     "Same marker factory on both screens":'NavigationMarkerFactory.make' in phone and 'NavigationMarkerFactory.make' in car,
     "Marker picker in Navigation Settings":'case "navigation"' in settings and 'NavigationMarkerFactory.preview' in settings,
     "Native AMAP SDK preserved":"implementation files('libs/amap-combined-20260805.jar')" in read("app/build.gradle"),
+    "AMAP icon type is read from NaviInfo":'getIconType' in bridge,
+    "Lane show and hide are observed":'"showLaneInfo"' in bridge and '"hideLaneInfo"' in bridge,
+    "Guidance store keeps icon and lanes":'"navi_icon"' in store and '"navi_lanes"' in store,
+    "Car routing maps maneuvers and sets a travel estimate":'AmapManeuverMap.map' in guidance and 'setDestinationTravelEstimate' in car,
+    "Unknown maneuvers include an icon resource":'ic_m_unknown' in icons,
 }
 for label,ok in checks.items(): print(("PASS" if ok else "FAIL")+" "+label)
 if not all(checks.values()):raise SystemExit("Navigation source contract check failed")

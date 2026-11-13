@@ -140,8 +140,16 @@ public final class NavSdkBridge {
                                     int next=asInt(info,"getCurStepRetainDistance");
                                     int remaining=asInt(info,"getPathRetainDistance");
                                     int seconds=asInt(info,"getPathRetainTime");
-                                    NaviGuidanceStore.update(context,road,next,remaining,seconds);
+                                    int icon=asInt(info,"getIconType");
+                                    NaviGuidanceStore.update(context,road,next,remaining,seconds,
+                                        icon,exitLabel(info));
                                 }
+                                break;
+                            case "showLaneInfo":
+                                if(args!=null) publishLanes(context,args);
+                                break;
+                            case "hideLaneInfo":
+                                NaviGuidanceStore.clearLanes(context);
                                 break;
                             case "onArriveDestination":
                                 NaviGuidanceStore.arrived(context);
@@ -175,6 +183,86 @@ public final class NavSdkBridge {
     private static int asInt(Object obj,String name) {
         try {Object v=obj.getClass().getMethod(name).invoke(obj);return v instanceof Number?((Number)v).intValue():-1;}
         catch(Exception e){return -1;}
+    }
+
+    /** Highway exit-sign text. Not a roundabout exit index; IconType has none. */
+    private static String exitLabel(Object info) {
+        try {
+            Object exit=info.getClass().getMethod("getExitDirectionInfo").invoke(info);
+            if(exit==null)return "";
+            return com.navith.amap.car.AmapExitLabel.join(
+                stringArray(exit,"getExitNameInfo"),stringArray(exit,"getDirectionInfo"));
+        } catch(ReflectiveOperationException e) {
+            return "";
+        }
+    }
+    private static String[] stringArray(Object obj,String method) throws ReflectiveOperationException {
+        Object value=obj.getClass().getMethod(method).invoke(obj);
+        return value instanceof String[]?(String[])value:null;
+    }
+
+    /**
+     * showLaneInfo(AMapLaneInfo) is the current callback. The deprecated
+     * byte-array overload is accepted when that is what the SDK invokes.
+     */
+    private static void publishLanes(Context context,Object[] args) {
+        if(args.length==1 && args[0]!=null) {
+            int[] background=readIntArray(args[0],"backgroundLane");
+            int[] front=readIntArray(args[0],"frontLane");
+            if(background==null || front==null) {
+                Log.d("NaviTH/Navigation","Lane callback has no background/front arrays");
+                return;
+            }
+            int count=readIntField(args[0],"laneCount");
+            int n=Math.min(background.length,front.length);
+            if(count>0) n=Math.min(n,count);
+            storeLanes(context,background,front,n);
+            return;
+        }
+        if(args.length>=3 && args[1] instanceof byte[] && args[2] instanceof byte[]) {
+            int[] background=unsigned((byte[])args[1]);
+            int[] front=unsigned((byte[])args[2]);
+            storeLanes(context,background,front,Math.min(background.length,front.length));
+        }
+    }
+    private static void storeLanes(Context context,int[] background,int[] front,int count) {
+        if(count<=0) {
+            NaviGuidanceStore.clearLanes(context);
+            return;
+        }
+        String encoded=com.navith.amap.car.AmapLaneMap.encode(background,front,count);
+        if(encoded.isEmpty()) NaviGuidanceStore.clearLanes(context);
+        else NaviGuidanceStore.setLanes(context,encoded);
+    }
+    private static int[] unsigned(byte[] raw) {
+        int[] out=new int[raw.length];
+        for(int i=0;i<raw.length;i++) out[i]=raw[i]&0xFF;
+        return out;
+    }
+    private static Object readField(Object obj,String name) {
+        try {return obj.getClass().getField(name).get(obj);}
+        catch(ReflectiveOperationException ignored) {
+            try {
+                Field field=obj.getClass().getDeclaredField(name);
+                field.setAccessible(true);
+                return field.get(obj);
+            } catch(ReflectiveOperationException e) {return null;}
+        }
+    }
+    private static int readIntField(Object obj,String name) {
+        Object value=readField(obj,name);
+        return value instanceof Number?((Number)value).intValue():-1;
+    }
+    private static int[] readIntArray(Object obj,String name) {
+        Object value=readField(obj,name);
+        if(value instanceof int[]) return (int[])value;
+        if(value instanceof Integer[]) {
+            Integer[] boxed=(Integer[])value;
+            int[] out=new int[boxed.length];
+            for(int i=0;i<boxed.length;i++) out[i]=boxed[i]==null?255:boxed[i];
+            return out;
+        }
+        return null;
     }
 
     private static void shareNavigationPosition(Context context,Object location) {

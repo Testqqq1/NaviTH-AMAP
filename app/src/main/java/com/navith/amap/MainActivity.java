@@ -30,6 +30,7 @@ import org.json.JSONObject;
 import android.content.Intent;
 import android.speech.RecognizerIntent;
 import android.content.ActivityNotFoundException;
+import com.navith.amap.car.AmapManeuverMap;
 import com.navith.amap.car.NaviGuidanceStore;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
@@ -1790,8 +1791,9 @@ public final class MainActivity extends Activity implements
         String phase=NaviGuidanceStore.phase(this);
         NaviGuidanceStore.Snapshot live=NaviGuidanceStore.fresh(this);
         if(live!=null) {
-            routeSummary.setText(tr("ถนนถัดไป: ","Next road: ")+live.nextRoad+
-                " · "+Math.max(0,live.nextMeters)+" m");
+            AmapManeuverMap.Spec spec=AmapManeuverMap.map(live.iconType);
+            routeSummary.setText(AmapManeuverMap.cue(spec,live.nextRoad,live.exitLabel,NaviLocale.thai(this))
+                +" · "+Math.max(0,live.nextMeters)+" m");
             return;
         }
         if("planning".equals(phase)) {
