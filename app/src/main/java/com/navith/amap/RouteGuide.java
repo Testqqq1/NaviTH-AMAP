@@ -43,10 +43,12 @@ public final class RouteGuide {
         public final int remainingMeters;
         public final int remainingSeconds;
         public final double traveledMeters;
+        /** Raw step action at the upcoming maneuver, used for the spoken phrase. */
+        public final String action;
 
         Progress(boolean offRoute, boolean arrived, double crossTrackMeters, int iconType,
                  String currentRoad, String nextRoad, int nextMeters, int remainingMeters,
-                 int remainingSeconds, double traveledMeters) {
+                 int remainingSeconds, double traveledMeters, String action) {
             this.offRoute = offRoute;
             this.arrived = arrived;
             this.crossTrackMeters = crossTrackMeters;
@@ -57,6 +59,7 @@ public final class RouteGuide {
             this.remainingMeters = remainingMeters;
             this.remainingSeconds = remainingSeconds;
             this.traveledMeters = traveledMeters;
+            this.action = action == null ? "" : action;
         }
     }
 
@@ -105,7 +108,7 @@ public final class RouteGuide {
             int remainSeconds = totalDuration <= 0 || length <= 0 ? 0
                     : (int) Math.round(totalDuration * (remaining / length));
             return new Progress(cross > OFF_ROUTE_METERS, arrived, cross, icon, current, next,
-                    nextMeters, remainMeters, remainSeconds, traveled);
+                    nextMeters, remainMeters, remainSeconds, traveled, action[maneuverLeg]);
         }
 
         /** Position and bearing (degrees clockwise from north) at a distance along the route. */
@@ -263,7 +266,7 @@ public final class RouteGuide {
         return 0;
     }
 
-    static double meters(double lat1, double lon1, double lat2, double lon2) {
+    public static double meters(double lat1, double lon1, double lat2, double lon2) {
         double r = 6371000.0;
         double p1 = Math.toRadians(lat1);
         double p2 = Math.toRadians(lat2);

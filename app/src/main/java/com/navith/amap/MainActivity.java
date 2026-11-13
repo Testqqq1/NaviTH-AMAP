@@ -168,18 +168,34 @@ public final class MainActivity extends Activity implements
     private boolean homeOpen=false;
     private boolean hasRoutePreview=false;
     private RouteGuide.Route activeRoute;
+    private final java.util.ArrayList<RouteGuide.Leg> activeLegs = new java.util.ArrayList<>();
+    private int activeDuration;
     private boolean guiding;
     private boolean guideEmulator;
     private boolean guidanceReroute;
     private int offRouteStreak;
-    private double emulatorMeters;
-    private long emulatorTickAt;
-    private final Runnable guideTick=this::tickGuidance;
     private final Handler uiHandler=new Handler(Looper.getMainLooper());
     private Runnable dismissStatus;
     private RadioGroup modeGroup;
     private final SharedPreferences.OnSharedPreferenceChangeListener tripChanges = (p,key) -> {
         if (!initialized) return;
+        if (TripStore.LOCATION.equals(key) && guiding) {
+            runOnUiThread(() -> {
+                LatLng here = TripStore.location(this);
+                if (here == null || map == null) return;
+                myLocation = here;
+                updatePositionMarker(null);
+            });
+        }
+        if (TripStore.ROUTE.equals(key) && guiding) {
+            runOnUiThread(() -> {
+                java.util.List<LatLng> pts = TripStore.route(this);
+                if (pts.size() < 2 || map == null) return;
+                clearRouteLine();
+                routeLine = map.addPolyline(new PolylineOptions().addAll(pts)
+                        .width(dp(5)).color(getColor(R.color.nav_route)).zIndex(2));
+            });
+        }
         if (NaviGuidanceStore.EVENT.equals(key)) {
             runOnUiThread(() -> {
                 if(isFinishing() || !initialized) return;
@@ -218,8 +234,8 @@ public final class MainActivity extends Activity implements
         new AlertDialog.Builder(this)
             .setTitle(tr("ขอความยินยอมใช้แผนที่","Map service privacy consent"))
             .setMessage(tr(
-                "NaviTH ใช้ AMAP Maps, Search และ Location SDK ของผู้ให้บริการภายนอก เพื่อแสดงแผนที่ ค้นหาสถานที่ และคำนวณเส้นทาง ข้อมูลอุปกรณ์ เครือข่าย และตำแหน่งอาจถูกส่งให้ AMAP ตามการใช้บริการ\n\nแอปจะขอสิทธิ์ตำแหน่งของ Android แยกต่างหาก ใช้เฉพาะขณะเปิดแอป ไม่ขอตำแหน่งเบื้องหลัง\n\nอ่าน PRIVACY.md และนโยบายที่ mapsplatform.opnavi.com ก่อนยอมรับ",
-                "NaviTH uses third-party AMAP Maps, Search and Location SDKs to display maps, find places and preview routes. Device, network and location data may be sent to AMAP as part of these services.\n\nAndroid location permission is requested separately. The app uses location only while in the foreground and does not request background location.\n\nPlease review PRIVACY.md and the AMAP privacy policy at mapsplatform.opnavi.com before accepting."
+                "NaviTH ใช้ AMAP Maps, Search และ Location SDK ของผู้ให้บริการภายนอก เพื่อแสดงแผนที่ ค้นหาสถานที่ และคำนวณเส้นทาง ข้อมูลอุปกรณ์ เครือข่าย และตำแหน่งอาจถูกส่งให้ AMAP ตามการใช้บริการ\n\nแอปจะขอสิทธิ์ตำแหน่งของ Android แยกต่างหาก ระหว่างนำทาง บริการเบื้องหน้าจะใช้ตำแหน่งต่อแม้หน้าจอดับ และแสดงการแจ้งเตือนการเลี้ยว\n\nอ่าน PRIVACY.md และนโยบายที่ mapsplatform.opnavi.com ก่อนยอมรับ",
+                "NaviTH uses third-party AMAP Maps, Search and Location SDKs to display maps, find places and preview routes. Device, network and location data may be sent to AMAP as part of these services.\n\nAndroid location permission is requested separately. During navigation a foreground service keeps location on while the screen is off and shows the next maneuver.\n\nPlease review PRIVACY.md and the AMAP privacy policy at mapsplatform.opnavi.com before accepting."
             ))
             .setCancelable(false)
             .setPositiveButton(tr("ยอมรับและเปิดแผนที่","Accept and open map"),(d,w)->{
@@ -355,6 +371,11 @@ public final class MainActivity extends Activity implements
         });
         View emulatorNavigation=findViewById(R.id.emulatorNavigationButton);
         if(emulatorNavigation!=null) emulatorNavigation.setOnClickListener(v -> beginNavigation(true));
+        View voiceToggle=findViewById(R.id.voiceToggle);
+        if(voiceToggle!=null) voiceToggle.setOnClickListener(v -> {
+            GuidanceLaunch.setVoiceMuted(this, !GuidanceLaunch.voiceMuted(this));
+            refreshVoiceButton();
+        });
         findViewById(R.id.addressLookupButton).setOnClickListener(v -> {
             if(destination!=null)reverseSelectedAddress(destination);
         });
@@ -582,7 +603,6 @@ public final class MainActivity extends Activity implements
                 Math.round(accuracy)+(NaviLocale.thai(this)?" เมตร":" meters"));
         }
         if (first) status(tr("พบพิกัดจาก ","Location from ")+source);
-        if (guiding && !guideEmulator) publishGuidance(fix.getLatitude(), fix.getLongitude());
     }
 
     private void updatePositionMarker(Location fix) {
@@ -1049,7 +1069,10 @@ public final class MainActivity extends Activity implements
                         RouteGuide.trafficStatus(tmc.getStatus()), tmc.getDistance()));
             }
         }
-        activeRoute = RouteGuide.compile(legs, destinationName, Math.round(path.getDuration()));
+        activeLegs.clear();
+        activeLegs.addAll(legs);
+        activeDuration = Math.round(path.getDuration());
+        activeRoute = RouteGuide.compile(legs, destinationName, activeDuration);
         if (activeRoute != null) {
             NaviGuidanceStore.setTraffic(this, (int) Math.min(Integer.MAX_VALUE, Math.round(activeRoute.lengthMeters())),
                     com.navith.amap.car.CarHud.encodeTraffic(traffic));
@@ -1076,115 +1099,33 @@ public final class MainActivity extends Activity implements
             drawRoute(points, path.getDistance(), path.getDuration(),
                     NaviLocale.text(this, "รถยนต์", "Driving"));
         }
-        if (guiding && activeRoute != null && myLocation != null) {
-            NaviGuidanceStore.started(this);
-            publishGuidance(myLocation.latitude, myLocation.longitude);
-        }
         updateLiveGuidanceState();
         refreshNavigationAction();
     }
 
     private void startLocalGuidance(boolean emulator) {
-        if (activeRoute == null) return;
+        if (activeRoute == null || activeLegs.isEmpty() || destination == null) return;
+        if (android.os.Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 104);
+        }
         guiding = true;
         guideEmulator = emulator;
-        guidanceReroute = false;
-        offRouteStreak = 0;
-        emulatorMeters = 0;
-        emulatorTickAt = 0;
-        uiHandler.removeCallbacks(guideTick);
-        NaviGuidanceStore.started(this);
-        if (emulator) {
-            status(tr("จำลองการเคลื่อนที่ตามเส้นทาง ไม่ใช้หน้าจอของ AMAP",
-                    "Simulating movement along the route, without the AMAP page"));
-            tickGuidance();
-        } else {
-            status(tr("เริ่มนำทางตามเส้นทางบนแผนที่",
-                    "Guiding along the route on the map"));
-            if (myLocation != null) publishGuidance(myLocation.latitude, myLocation.longitude);
-            uiHandler.postDelayed(guideTick, 1000);
+        GuidanceLaunch.start(this, activeLegs, destinationName,
+                destination.latitude, destination.longitude, activeDuration, emulator);
+        status(emulator
+                ? tr("จำลองการเคลื่อนที่ตามเส้นทาง พร้อมเสียงภาษาไทย",
+                    "Simulating the route, with Thai voice prompts")
+                : tr("เริ่มนำทางตามเส้นทางบนแผนที่ พร้อมเสียงภาษาไทย",
+                    "Guiding along the map route, with Thai voice prompts"));
+        if (getSharedPreferences("navith_trip", MODE_PRIVATE).getBoolean("voice_thai_missing", false)) {
+            status(tr("ไม่มีเสียงภาษาไทย แตะการแจ้งเตือนเพื่อติดตั้งข้อมูลเสียง",
+                    "Thai voice data is missing. Use the notification to install it."));
         }
         refreshNavigationAction();
         updateLiveGuidanceState();
-    }
-
-    private void tickGuidance() {
-        if (!guiding || activeRoute == null) return;
-        if (guideEmulator) {
-            long now = SystemClock.elapsedRealtime();
-            double dt = emulatorTickAt == 0 ? 1.0 : Math.min(2.0, (now - emulatorTickAt) / 1000.0);
-            emulatorTickAt = now;
-            emulatorMeters += 20.0 * dt;
-            if (emulatorMeters >= activeRoute.lengthMeters()) {
-                NaviGuidanceStore.arrived(this);
-                guiding = false;
-                guideEmulator = false;
-                updateLiveGuidanceState();
-                refreshNavigationAction();
-                return;
-            }
-            double[] pose = activeRoute.poseAt(emulatorMeters);
-            Location fix = new Location("จำลอง");
-            fix.setLatitude(pose[0]);
-            fix.setLongitude(pose[1]);
-            fix.setTime(System.currentTimeMillis());
-            fix.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
-            fix.setAccuracy(5f);
-            fix.setSpeed(20f);
-            fix.setBearing((float) pose[2]);
-            acceptLocation(fix, "จำลอง");
-            publishGuidance(pose[0], pose[1]);
-        } else if (myLocation != null) {
-            publishGuidance(myLocation.latitude, myLocation.longitude);
-        }
-        uiHandler.postDelayed(guideTick, 1000);
-    }
-
-    private void publishGuidance(double latitude, double longitude) {
-        if (!guiding || activeRoute == null) return;
-        RouteGuide.Progress progress = activeRoute.follow(latitude, longitude);
-        if (progress.arrived) {
-            NaviGuidanceStore.arrived(this);
-            guiding = false;
-            guideEmulator = false;
-            uiHandler.removeCallbacks(guideTick);
-            updateLiveGuidanceState();
-            refreshNavigationAction();
-            return;
-        }
-        if (progress.offRoute && !guideEmulator) {
-            offRouteStreak++;
-            if (offRouteStreak >= 3 && !guidanceReroute) {
-                guidanceReroute = true;
-                NaviGuidanceStore.rerouting(this);
-                updateLiveGuidanceState();
-                rerouteFromHere();
-            }
-            return;
-        }
-        offRouteStreak = 0;
-        int next = Math.min(99999, Math.max(0, progress.nextMeters));
-        int left = Math.min(499000, Math.max(0, progress.remainingMeters));
-        int seconds = Math.min(172000, Math.max(0, progress.remainingSeconds));
-        String road = progress.nextRoad == null || progress.nextRoad.isEmpty() ? "จุดหมาย" : progress.nextRoad;
-        NaviGuidanceStore.update(this, road, next, left, seconds, progress.iconType, "", progress.currentRoad);
-        updateLiveGuidanceState();
-    }
-
-    private void rerouteFromHere() {
-        if (destination == null || myLocation == null || routeSearch == null) {
-            guidanceReroute = false;
-            return;
-        }
-        try {
-            RouteSearch.FromAndTo fromAndTo = new RouteSearch.FromAndTo(
-                    toPoint(myLocation), toPoint(destination));
-            routeSearch.calculateDriveRouteAsyn(new RouteSearch.DriveRouteQuery(
-                    fromAndTo, routeStrategy(), null, null, ""));
-        } catch (Exception e) {
-            guidanceReroute = false;
-            status(tr("คำนวณทางใหม่ไม่ได้","Could not calculate a new route"));
-        }
+        refreshVoiceButton();
     }
 
     private void stopLocalGuidance() {
@@ -1192,8 +1133,17 @@ public final class MainActivity extends Activity implements
         guideEmulator = false;
         guidanceReroute = false;
         offRouteStreak = 0;
-        uiHandler.removeCallbacks(guideTick);
+        GuidanceLaunch.stop(this);
         NaviGuidanceStore.stopped(this);
+    }
+
+    private void refreshVoiceButton() {
+        android.widget.TextView voice = findViewById(R.id.voiceToggle);
+        if (voice == null) return;
+        boolean muted = GuidanceLaunch.voiceMuted(this);
+        voice.setText(muted
+                ? tr("เสียงนำทางปิด","Voice guidance off")
+                : tr("เสียงนำทางเปิด","Voice guidance on"));
     }
 
     private void calculateRoute() {
@@ -2046,8 +1996,14 @@ public final class MainActivity extends Activity implements
             updateLocationMarkerVisibility();
         }
         if (initialized) {
+            if (NaviGuidanceStore.isNavigating(this)) guiding = true;
             if ("planning".equals(NaviGuidanceStore.phase(this)) && !guiding) {
                 NaviGuidanceStore.stopped(this);
+            }
+            refreshVoiceButton();
+            if (getSharedPreferences("navith_trip", MODE_PRIVATE).getBoolean("voice_thai_missing", false)) {
+                status(tr("ไม่มีเสียงภาษาไทย แตะการแจ้งเตือนเพื่อติดตั้งข้อมูลเสียง",
+                        "Thai voice data is missing. Use the notification to install it."));
             }
             refreshNavigationAction();
             updateLiveGuidanceState();
@@ -2096,7 +2052,7 @@ public final class MainActivity extends Activity implements
         if(!initialized || destination==null)return;
         Button b=findViewById(R.id.startNavigationButton);
         if(b==null)return;
-        boolean running=NaviGuidanceStore.isNavigating(this);
+        boolean running=guiding || NaviGuidanceStore.isNavigating(this);
         boolean launching="planning".equals(NaviGuidanceStore.phase(this));
         if (launching) {
             long startedAt=com.navith.amap.car.TripStore.prefs(this).getLong("navi_phase_at",0L);
@@ -2141,7 +2097,6 @@ public final class MainActivity extends Activity implements
     }
 
     @Override protected void onDestroy() {
-        stopLocalGuidance();
         TripStore.prefs(this).unregisterOnSharedPreferenceChangeListener(tripChanges);
         if (locationClient != null) {
             locationClient.stopLocation();

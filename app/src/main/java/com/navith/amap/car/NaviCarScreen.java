@@ -30,13 +30,20 @@ import androidx.car.app.CarContext;
 import androidx.car.app.Screen;
 import androidx.car.app.SurfaceCallback;
 import androidx.car.app.SurfaceContainer;
+import androidx.car.app.constraints.ConstraintManager;
 import androidx.car.app.model.Action;
 import androidx.car.app.model.ActionStrip;
+import androidx.car.app.model.ItemList;
 import androidx.car.app.model.MessageTemplate;
 import androidx.car.app.model.Pane;
 import androidx.car.app.model.PaneTemplate;
 import androidx.car.app.model.Row;
 import androidx.car.app.model.Template;
+import androidx.car.app.navigation.NavigationManager;
+import androidx.car.app.navigation.model.Destination;
+import androidx.car.app.navigation.model.PlaceListNavigationTemplate;
+import androidx.car.app.navigation.model.Step;
+import androidx.car.app.navigation.model.Trip;
 import androidx.car.app.AppManager;
 import androidx.car.app.navigation.model.MapWithContentTemplate;
 import androidx.car.app.navigation.model.MessageInfo;
@@ -52,6 +59,7 @@ import com.amap.api.maps.MapsInitializer;
 import com.amap.api.maps.TextureMapView;
 import com.amap.api.maps.model.BitmapDescriptorFactory;
 import com.amap.api.maps.model.BitmapDescriptor;
+import com.navith.amap.GuidanceLaunch;
 import com.navith.amap.NavigationMarkerFactory;
 import com.amap.api.maps.model.LatLng;
 import com.amap.api.maps.model.LatLngBounds;
@@ -74,9 +82,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Android Auto map screen. Turn-by-turn instructions are shown only while a fresh
- * AMAP NaviInfo callback is in {@link NaviGuidanceStore}. RouteSearch geometry is
- * still a preview and is never turned into maneuvers or lanes.
+ * Android Auto map screen. Turn-by-turn comes from {@link NaviGuidanceStore},
+ * which the guidance service fills from the Route Search path.
  * The car host only gives us one {@link android.view.Surface}. A MapView SurfaceView
  * punches a second layer that never reaches that buffer, so the map is a TextureMapView
  * inside a presentation virtual display. The guidance card is drawn by the host.
@@ -119,6 +126,7 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
     private boolean followGps=true;
     private long lastCarCameraUpdate=0L;
     private LatLng requestedDestination;
+    private boolean navTripStarted;
 
     NaviCarScreen(@NonNull CarContext c) {
         super(c);
@@ -139,6 +147,7 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
                         NaviGuidanceStore.EVENT.equals(key)) updateLocationMarker();
                     else updateMap();
                     refreshHud();
+                    syncNavigationTrip();
                     invalidate();
                     if (TripStore.DESTINATION.equals(key) && TripStore.destination(getCarContext())!=null) calculateCarRoute();
                 });
@@ -207,17 +216,28 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
                 applyCarMapStyle();
                 invalidate();
             }).build();
-        // Keep a maximum of three primary car actions to avoid driver distraction.
+        Action mute=new Action.Builder()
+            .setTitle(GuidanceLaunch.voiceMuted(getCarContext()) ? tr("เปิดเสียง","Unmute") : tr("ปิดเสียง","Mute"))
+            .setOnClickListener(() -> {
+                GuidanceLaunch.setVoiceMuted(getCarContext(), !GuidanceLaunch.voiceMuted(getCarContext()));
+                invalidate();
+            }).build();
+        // Four is the host limit. Navigation keeps mute, locate and search.
         ActionStrip.Builder actionBar=new ActionStrip.Builder()
             .addAction(search).addAction(locate);
         if (dest.isEmpty()) actionBar.addAction(view);
         else actionBar.addAction(new Action.Builder()
             .setTitle(tr("ล้าง","Clear"))
-            .setOnClickListener(()->TripStore.clearDestination(getCarContext())).build());
+            .setOnClickListener(()->{
+                GuidanceLaunch.stop(getCarContext());
+                TripStore.clearDestination(getCarContext());
+            }).build());
+        ActionStrip navigationActions=new ActionStrip.Builder()
+            .addAction(mute).addAction(locate).addAction(search).build();
         if ("arrived".equals(NaviGuidanceStore.phase(getCarContext())) && !dest.isEmpty()) {
             followGps=false;
             NavigationTemplate.Builder nav=new NavigationTemplate.Builder()
-                .setActionStrip(actionBar.build())
+                .setActionStrip(navigationActions)
                 .setNavigationInfo(CarGuidance.arrival(getCarContext(),dest));
             TravelEstimate done=CarGuidance.arrivedEstimate();
             if(done!=null) nav.setDestinationTravelEstimate(done);
@@ -233,13 +253,16 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
             followGps=true;
             RoutingInfo actual=CarGuidance.routing(getCarContext(),guidance);
             NavigationTemplate.Builder nav=new NavigationTemplate.Builder()
-                .setActionStrip(actionBar.build()).setNavigationInfo(actual);
+                .setActionStrip(navigationActions).setNavigationInfo(actual);
             TravelEstimate trip=CarGuidance.travelEstimate(guidance);
             if(trip!=null) nav.setDestinationTravelEstimate(trip);
             if(getCarContext().getCarAppApiLevel()>=2) {
                 nav.setMapActionStrip(new ActionStrip.Builder().addAction(Action.PAN).build());
             }
             return nav.build();
+        }
+        if (dest.isEmpty() && getCarContext().getCarAppApiLevel()>=4) {
+            return placeList(actionBar.build());
         }
         if (getCarContext().getCarAppApiLevel()>=7) {
             Pane pane=new Pane.Builder().addRow(new Row.Builder().setTitle(
@@ -262,6 +285,88 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
     private boolean hasLocationPermission() {
         return getCarContext().checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED
                 || getCarContext().checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED;
+    }
+
+    private Template placeList(ActionStrip actions) {
+        int limit = 6;
+        try {
+            limit = Math.max(2, getCarContext().getCarService(ConstraintManager.class)
+                    .getContentLimit(ConstraintManager.CONTENT_LIMIT_TYPE_PLACE_LIST));
+        } catch (RuntimeException ignored) { }
+        ItemList.Builder items = new ItemList.Builder();
+        int count = 0;
+        count = addPlace(items, count, limit, SavedPlaces.shortcut(getCarContext(), "home"), tr("บ้าน", "Home"));
+        count = addPlace(items, count, limit, SavedPlaces.shortcut(getCarContext(), "work"), tr("ที่ทำงาน", "Work"));
+        org.json.JSONArray recents = SavedPlaces.list(getCarContext(), "recents");
+        for (int i = 0; i < recents.length() && count < limit; i++) {
+            count = addPlace(items, count, limit, recents.optJSONObject(i), tr("ล่าสุด", "Recent"));
+        }
+        if (count == 0) {
+            items.addItem(new Row.Builder().setTitle(tr("ค้นหาจุดหมาย", "Search for a place"))
+                    .setOnClickListener(() -> getScreenManager().push(new NaviSearchScreen(getCarContext(), this)))
+                    .build());
+        }
+        return new PlaceListNavigationTemplate.Builder()
+                .setTitle(tr("จะไปที่ไหน", "Where to?"))
+                .setHeaderAction(Action.APP_ICON)
+                .setActionStrip(actions)
+                .setItemList(items.build())
+                .build();
+    }
+
+    private int addPlace(ItemList.Builder items, int count, int limit, org.json.JSONObject value, String label) {
+        if (value == null || count >= limit) return count;
+        double lat = value.optDouble("lat", Double.NaN);
+        double lon = value.optDouble("lon", Double.NaN);
+        String title = value.optString("title", "");
+        if (!Double.isFinite(lat) || !Double.isFinite(lon) || title.isEmpty()) return count;
+        items.addItem(new Row.Builder().setTitle(title).addText(label)
+                .setOnClickListener(() -> getScreenManager().push(
+                        new NaviRoutePreviewScreen(getCarContext(), new LatLng(lat, lon), title)))
+                .build());
+        return count + 1;
+    }
+
+    private void syncNavigationTrip() {
+        try {
+            NavigationManager manager = getCarContext().getCarService(NavigationManager.class);
+            String phase = NaviGuidanceStore.phase(getCarContext());
+            NaviGuidanceStore.Snapshot guidance = NaviGuidanceStore.fresh(getCarContext());
+            boolean active = "navigating".equals(phase) || "rerouting".equals(phase);
+            if (active && !navTripStarted) {
+                manager.navigationStarted();
+                navTripStarted = true;
+            }
+            if (navTripStarted && guidance != null) {
+                TravelEstimate estimate = CarGuidance.travelEstimate(guidance);
+                if (estimate != null) {
+                    AmapManeuverMap.Spec spec = AmapManeuverMap.map(guidance.iconType);
+                    Step.Builder step = new Step.Builder(AmapManeuverMap.cue(
+                            spec, guidance.nextRoad, guidance.exitLabel, NaviLocale.thai(getCarContext())))
+                            .setManeuver(AmapManeuverMap.build(spec, ManeuverIcons.icon(getCarContext(), spec.type)));
+                    String road = AmapManeuverMap.road(guidance.nextRoad);
+                    if (!road.isEmpty()) step.setRoad(road);
+                    String destName = TripStore.destinationName(getCarContext());
+                    if (destName == null || destName.isEmpty()) destName = "จุดหมาย";
+                    Destination destination = new Destination.Builder()
+                            .setName(destName)
+                            .setAddress(destName)
+                            .build();
+                    manager.updateTrip(new Trip.Builder()
+                            .addStep(step.build(), estimate)
+                            .addDestination(destination, estimate)
+                            .setCurrentRoad(guidance.currentRoad == null ? "" : guidance.currentRoad)
+                            .setLoading("rerouting".equals(phase))
+                            .build());
+                }
+            }
+            if (navTripStarted && ("idle".equals(phase) || "arrived".equals(phase) || "error".equals(phase))) {
+                manager.navigationEnded();
+                navTripStarted = false;
+            }
+        } catch (RuntimeException ex) {
+            Log.w(TAG, "NavigationManager update skipped", ex);
+        }
     }
 
     void onPlaceSelected(LatLng point,String name) {
