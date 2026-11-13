@@ -65,6 +65,9 @@ dependencies {
     implementation files('libs/amap-combined-20260805.jar')
     implementation 'androidx.car.app:app:1.7.0'
     implementation 'androidx.car.app:app-projected:1.7.0'
+    // Debug-only. Provides CarAppActivity so an Automotive emulator can ask the
+    // system template host to draw NavigationTemplate. Not on the release classpath.
+    debugImplementation 'androidx.car.app:app-automotive:1.7.0'
     testImplementation 'junit:junit:4.13.2'
 }
 

@@ -307,7 +307,8 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
             map.getUiSettings().setCompassEnabled(false);
             updateMap();
             applyCarMapStyle();
-        } catch (Exception e) {
+        } catch (Throwable e) {
+            // Link errors from a missing ABI must not take down the guidance template.
             Log.e(TAG,"MapView on virtual display needs real AA/DHU validation",e);
             releasePresentation();
         }

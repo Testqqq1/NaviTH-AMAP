@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Debug builds only. Release does not merge src/debug. -->
+    <uses-sdk tools:overrideLibrary="androidx.car.app.automotive" />
+    <application>
+        <service
+            android:name="androidx.car.app.CarAppMetadataHolderService"
+            android:enabled="false"
+            android:exported="false"
+            tools:node="merge">
+            <!-- Keep the projected hardware manager so phone DHU behavior stays. -->
+            <meta-data
+                android:name="androidx.car.app.CarAppMetadataHolderService.CAR_HARDWARE_MANAGER"
+                android:value="androidx.car.app.hardware.ProjectedCarHardwareManager"
+                tools:replace="android:value" />
+        </service>
+        <activity
+            android:name="androidx.car.app.activity.CarAppActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+            <meta-data
+                android:name="distractionOptimized"
+                android:value="true" />
+        </activity>
+        <receiver
+            android:name=".debug.GuidancePreviewReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.navith.amap.DEBUG_GUIDANCE" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
