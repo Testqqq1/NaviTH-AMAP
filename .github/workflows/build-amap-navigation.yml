@@ -14,6 +14,7 @@ on:
       - 'app/src/main/AndroidManifest.xml'
       - 'app/build.gradle'
       - 'app/src/main/java/com/navith/amap/car/**'
+      - 'app/src/test/**'
       - 'app/src/main/java/com/navith/amap/McpPlacesClient.java'
       - 'app/src/main/java/com/navith/amap/SettingsActivity.java'
       - 'app/src/main/res/values/**'
@@ -171,7 +172,27 @@ jobs:
           grep -q 'onStartNavi(' "$RUNNER_TEMP/listener.txt"
           grep -q 'onArriveDestination(' "$RUNNER_TEMP/listener.txt"
           grep -q 'onReCalculateRouteForYaw(' "$RUNNER_TEMP/listener.txt"
-          echo 'Navigation component, privacy, GPS callbacks and rerouting APIs verified'
+          javap -classpath "$jar" com.amap.api.navi.model.NaviInfo > "$RUNNER_TEMP/navi-info.txt"
+          javap -classpath "$jar" com.amap.api.navi.model.AMapLaneInfo > "$RUNNER_TEMP/lane-info.txt"
+          javap -classpath "$jar" com.amap.api.navi.model.AMapExitDirectionInfo > "$RUNNER_TEMP/exit-info.txt"
+          javap -classpath "$jar" com.amap.api.navi.enums.IconType > "$RUNNER_TEMP/icon-type.txt"
+          grep -q 'getIconType(' "$RUNNER_TEMP/navi-info.txt"
+          grep -q 'getNextRoadName(' "$RUNNER_TEMP/navi-info.txt"
+          grep -q 'getCurStepRetainDistance(' "$RUNNER_TEMP/navi-info.txt"
+          grep -q 'getPathRetainDistance(' "$RUNNER_TEMP/navi-info.txt"
+          grep -q 'getPathRetainTime(' "$RUNNER_TEMP/navi-info.txt"
+          grep -q 'getExitDirectionInfo(' "$RUNNER_TEMP/navi-info.txt"
+          grep -q 'showLaneInfo(' "$RUNNER_TEMP/listener.txt"
+          grep -q 'hideLaneInfo(' "$RUNNER_TEMP/listener.txt"
+          grep -q 'backgroundLane' "$RUNNER_TEMP/lane-info.txt"
+          grep -q 'frontLane' "$RUNNER_TEMP/lane-info.txt"
+          grep -q 'laneCount' "$RUNNER_TEMP/lane-info.txt"
+          grep -q 'getExitNameInfo(' "$RUNNER_TEMP/exit-info.txt"
+          grep -q 'getDirectionInfo(' "$RUNNER_TEMP/exit-info.txt"
+          grep -q 'int LEFT;' "$RUNNER_TEMP/icon-type.txt"
+          grep -q 'int ENTER_ROUNDABOUT;' "$RUNNER_TEMP/icon-type.txt"
+          grep -q 'int MERGE_LEFT;' "$RUNNER_TEMP/icon-type.txt"
+          echo 'Navigation component, privacy, GPS callbacks, icon type and lane APIs verified'
 
       - name: Check local demo signing certificate
         shell: bash
@@ -186,7 +207,7 @@ jobs:
             echo "::error::Missing repository Actions secret AMAP_KEY"
             exit 1
           fi
-          gradle --no-daemon :app:assembleDebug --stacktrace
+          gradle --no-daemon :app:assembleDebug :app:testDebugUnitTest --stacktrace
 
       - name: Upload experimental NaviTH Navigation APK
         uses: actions/upload-artifact@v4

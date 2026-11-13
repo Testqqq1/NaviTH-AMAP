@@ -23,36 +23,43 @@ import android.os.Looper;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
 import android.util.Log;
+import android.view.WindowManager;
 
 import androidx.annotation.NonNull;
 import androidx.car.app.CarContext;
 import androidx.car.app.Screen;
 import androidx.car.app.SurfaceCallback;
 import androidx.car.app.SurfaceContainer;
+import androidx.car.app.constraints.ConstraintManager;
 import androidx.car.app.model.Action;
 import androidx.car.app.model.ActionStrip;
+import androidx.car.app.model.ItemList;
 import androidx.car.app.model.MessageTemplate;
 import androidx.car.app.model.Pane;
 import androidx.car.app.model.PaneTemplate;
 import androidx.car.app.model.Row;
 import androidx.car.app.model.Template;
+import androidx.car.app.navigation.NavigationManager;
+import androidx.car.app.navigation.model.Destination;
+import androidx.car.app.navigation.model.PlaceListNavigationTemplate;
+import androidx.car.app.navigation.model.Step;
+import androidx.car.app.navigation.model.Trip;
 import androidx.car.app.AppManager;
 import androidx.car.app.navigation.model.MapWithContentTemplate;
 import androidx.car.app.navigation.model.MessageInfo;
 import androidx.car.app.navigation.model.NavigationTemplate;
 import androidx.car.app.navigation.model.RoutingInfo;
-import androidx.car.app.navigation.model.Step;
-import androidx.car.app.navigation.model.Maneuver;
-import androidx.car.app.model.Distance;
+import androidx.car.app.navigation.model.TravelEstimate;
 import androidx.lifecycle.Lifecycle;
 import androidx.lifecycle.LifecycleEventObserver;
 
 import com.amap.api.maps.AMap;
 import com.amap.api.maps.CameraUpdateFactory;
-import com.amap.api.maps.MapView;
 import com.amap.api.maps.MapsInitializer;
+import com.amap.api.maps.TextureMapView;
 import com.amap.api.maps.model.BitmapDescriptorFactory;
 import com.amap.api.maps.model.BitmapDescriptor;
+import com.navith.amap.GuidanceLaunch;
 import com.navith.amap.NavigationMarkerFactory;
 import com.amap.api.maps.model.LatLng;
 import com.amap.api.maps.model.LatLngBounds;
@@ -60,6 +67,7 @@ import com.amap.api.maps.model.Marker;
 import com.amap.api.maps.model.Circle;
 import com.amap.api.maps.model.CircleOptions;
 import com.amap.api.maps.model.MarkerOptions;
+import com.amap.api.maps.model.Polyline;
 import com.amap.api.maps.model.PolylineOptions;
 import com.amap.api.services.core.LatLonPoint;
 import com.amap.api.services.route.BusRouteResult;
@@ -74,9 +82,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Android Auto map-and-route-PREVIEW screen.
- * Not turn-by-turn navigation. Do NOT synthesize maneuvers/lanes from preview geometry.
- * AMap MapView on a virtual-display Surface is experimental and must be tested on DHU.
+ * Android Auto map screen. Turn-by-turn comes from {@link NaviGuidanceStore},
+ * which the guidance service fills from the Route Search path.
+ * The car host only gives us one {@link android.view.Surface}. A MapView SurfaceView
+ * punches a second layer that never reaches that buffer, so the map is a TextureMapView
+ * inside a presentation virtual display. The guidance card is drawn by the host.
  */
 final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch.OnRouteSearchListener {
     private static final String TAG="NaviTH-Car";
@@ -87,10 +97,20 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
     private final SharedPreferences.OnSharedPreferenceChangeListener viewChanges;
     private VirtualDisplay virtualDisplay;
     private Presentation presentation;
-    private MapView mapView;
+    private TextureMapView mapView;
+    private android.widget.FrameLayout surfaceRoot;
+    private CarSurfaceHud hud;
     private AMap map;
     private Marker carLocationMarker;
+    private Marker compassMarker;
+    private BitmapDescriptor compassIcon;
     private Circle carAccuracyRing;
+    private Polyline routeCasing;
+    private Polyline routeCore;
+    private Rect visibleArea;
+    private Rect stableArea;
+    private int surfaceWidth;
+    private int surfaceHeight;
     private BitmapDescriptor carArrowIcon;
     private float smoothCarHeading=Float.NaN;
     private float smoothCarMarkerHeading=Float.NaN;
@@ -106,6 +126,7 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
     private boolean followGps=true;
     private long lastCarCameraUpdate=0L;
     private LatLng requestedDestination;
+    private boolean navTripStarted;
 
     NaviCarScreen(@NonNull CarContext c) {
         super(c);
@@ -125,6 +146,8 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
                     if (TripStore.LOCATION.equals(key) ||
                         NaviGuidanceStore.EVENT.equals(key)) updateLocationMarker();
                     else updateMap();
+                    refreshHud();
+                    syncNavigationTrip();
                     invalidate();
                     if (TripStore.DESTINATION.equals(key) && TripStore.destination(getCarContext())!=null) calculateCarRoute();
                 });
@@ -132,6 +155,14 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         };
         prefs.registerOnSharedPreferenceChangeListener(changes);
         getLifecycle().addObserver((LifecycleEventObserver)(source,event)->{
+            if (event == Lifecycle.Event.ON_PAUSE && mapView != null) {
+                try { mapView.onPause(); } catch (Exception ignored) {}
+            }
+            if (event == Lifecycle.Event.ON_RESUME && mapView != null) {
+                try { mapView.onResume(); } catch (Exception ignored) {}
+                applyAnchor();
+                followOrOverview();
+            }
             if (event == Lifecycle.Event.ON_DESTROY) {
                 prefs.unregisterOnSharedPreferenceChangeListener(changes);
                 viewPrefs.unregisterOnSharedPreferenceChangeListener(viewChanges);
@@ -185,31 +216,53 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
                 applyCarMapStyle();
                 invalidate();
             }).build();
-        // Keep a maximum of three primary car actions to avoid driver distraction.
+        Action mute=new Action.Builder()
+            .setTitle(GuidanceLaunch.voiceMuted(getCarContext()) ? tr("เปิดเสียง","Unmute") : tr("ปิดเสียง","Mute"))
+            .setOnClickListener(() -> {
+                GuidanceLaunch.setVoiceMuted(getCarContext(), !GuidanceLaunch.voiceMuted(getCarContext()));
+                invalidate();
+            }).build();
+        // Four is the host limit. Navigation keeps mute, locate and search.
         ActionStrip.Builder actionBar=new ActionStrip.Builder()
             .addAction(search).addAction(locate);
         if (dest.isEmpty()) actionBar.addAction(view);
         else actionBar.addAction(new Action.Builder()
             .setTitle(tr("ล้าง","Clear"))
-            .setOnClickListener(()->TripStore.clearDestination(getCarContext())).build());
-        NaviGuidanceStore.Snapshot guidance=NaviGuidanceStore.fresh(getCarContext());
-        // A genuine vendor NaviInfo callback is the ONLY source of turn-by-turn
-        // guidance. The normal RouteSearch polyline remains a preview.
-        if (guidance != null && !dest.isEmpty()) {
-            followGps=true;
-            Step step=new Step.Builder(tr("ไปยัง ","Continue to ")+guidance.nextRoad)
-                .setRoad(guidance.nextRoad)
-                .setManeuver(new Maneuver.Builder(Maneuver.TYPE_UNKNOWN).build())
-                .build();
-            RoutingInfo actual=new RoutingInfo.Builder()
-                .setCurrentStep(step,Distance.create(guidance.nextMeters,Distance.UNIT_METERS))
-                .build();
+            .setOnClickListener(()->{
+                GuidanceLaunch.stop(getCarContext());
+                TripStore.clearDestination(getCarContext());
+            }).build());
+        ActionStrip navigationActions=new ActionStrip.Builder()
+            .addAction(mute).addAction(locate).addAction(search).build();
+        if ("arrived".equals(NaviGuidanceStore.phase(getCarContext())) && !dest.isEmpty()) {
+            followGps=false;
             NavigationTemplate.Builder nav=new NavigationTemplate.Builder()
-                .setActionStrip(actionBar.build()).setNavigationInfo(actual);
+                .setActionStrip(navigationActions)
+                .setNavigationInfo(CarGuidance.arrival(getCarContext(),dest));
+            TravelEstimate done=CarGuidance.arrivedEstimate();
+            if(done!=null) nav.setDestinationTravelEstimate(done);
             if(getCarContext().getCarAppApiLevel()>=2) {
                 nav.setMapActionStrip(new ActionStrip.Builder().addAction(Action.PAN).build());
             }
             return nav.build();
+        }
+        NaviGuidanceStore.Snapshot guidance=NaviGuidanceStore.fresh(getCarContext());
+        // Turn-by-turn is whatever NaviGuidanceStore last published: AMAP NaviInfo
+        // where that SDK can route, or RouteGuide along the Route Search line.
+        if (guidance != null && !dest.isEmpty()) {
+            followGps=true;
+            RoutingInfo actual=CarGuidance.routing(getCarContext(),guidance);
+            NavigationTemplate.Builder nav=new NavigationTemplate.Builder()
+                .setActionStrip(navigationActions).setNavigationInfo(actual);
+            TravelEstimate trip=CarGuidance.travelEstimate(guidance);
+            if(trip!=null) nav.setDestinationTravelEstimate(trip);
+            if(getCarContext().getCarAppApiLevel()>=2) {
+                nav.setMapActionStrip(new ActionStrip.Builder().addAction(Action.PAN).build());
+            }
+            return nav.build();
+        }
+        if (dest.isEmpty() && getCarContext().getCarAppApiLevel()>=4) {
+            return placeList(actionBar.build());
         }
         if (getCarContext().getCarAppApiLevel()>=7) {
             Pane pane=new Pane.Builder().addRow(new Row.Builder().setTitle(
@@ -232,6 +285,88 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
     private boolean hasLocationPermission() {
         return getCarContext().checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED
                 || getCarContext().checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED;
+    }
+
+    private Template placeList(ActionStrip actions) {
+        int limit = 6;
+        try {
+            limit = Math.max(2, getCarContext().getCarService(ConstraintManager.class)
+                    .getContentLimit(ConstraintManager.CONTENT_LIMIT_TYPE_PLACE_LIST));
+        } catch (RuntimeException ignored) { }
+        ItemList.Builder items = new ItemList.Builder();
+        int count = 0;
+        count = addPlace(items, count, limit, SavedPlaces.shortcut(getCarContext(), "home"), tr("บ้าน", "Home"));
+        count = addPlace(items, count, limit, SavedPlaces.shortcut(getCarContext(), "work"), tr("ที่ทำงาน", "Work"));
+        org.json.JSONArray recents = SavedPlaces.list(getCarContext(), "recents");
+        for (int i = 0; i < recents.length() && count < limit; i++) {
+            count = addPlace(items, count, limit, recents.optJSONObject(i), tr("ล่าสุด", "Recent"));
+        }
+        if (count == 0) {
+            items.addItem(new Row.Builder().setTitle(tr("ค้นหาจุดหมาย", "Search for a place"))
+                    .setOnClickListener(() -> getScreenManager().push(new NaviSearchScreen(getCarContext(), this)))
+                    .build());
+        }
+        return new PlaceListNavigationTemplate.Builder()
+                .setTitle(tr("จะไปที่ไหน", "Where to?"))
+                .setHeaderAction(Action.APP_ICON)
+                .setActionStrip(actions)
+                .setItemList(items.build())
+                .build();
+    }
+
+    private int addPlace(ItemList.Builder items, int count, int limit, org.json.JSONObject value, String label) {
+        if (value == null || count >= limit) return count;
+        double lat = value.optDouble("lat", Double.NaN);
+        double lon = value.optDouble("lon", Double.NaN);
+        String title = value.optString("title", "");
+        if (!Double.isFinite(lat) || !Double.isFinite(lon) || title.isEmpty()) return count;
+        items.addItem(new Row.Builder().setTitle(title).addText(label)
+                .setOnClickListener(() -> getScreenManager().push(
+                        new NaviRoutePreviewScreen(getCarContext(), new LatLng(lat, lon), title)))
+                .build());
+        return count + 1;
+    }
+
+    private void syncNavigationTrip() {
+        try {
+            NavigationManager manager = getCarContext().getCarService(NavigationManager.class);
+            String phase = NaviGuidanceStore.phase(getCarContext());
+            NaviGuidanceStore.Snapshot guidance = NaviGuidanceStore.fresh(getCarContext());
+            boolean active = "navigating".equals(phase) || "rerouting".equals(phase);
+            if (active && !navTripStarted) {
+                manager.navigationStarted();
+                navTripStarted = true;
+            }
+            if (navTripStarted && guidance != null) {
+                TravelEstimate estimate = CarGuidance.travelEstimate(guidance);
+                if (estimate != null) {
+                    AmapManeuverMap.Spec spec = AmapManeuverMap.map(guidance.iconType);
+                    Step.Builder step = new Step.Builder(AmapManeuverMap.cue(
+                            spec, guidance.nextRoad, guidance.exitLabel, NaviLocale.thai(getCarContext())))
+                            .setManeuver(AmapManeuverMap.build(spec, ManeuverIcons.icon(getCarContext(), spec.type)));
+                    String road = AmapManeuverMap.road(guidance.nextRoad);
+                    if (!road.isEmpty()) step.setRoad(road);
+                    String destName = TripStore.destinationName(getCarContext());
+                    if (destName == null || destName.isEmpty()) destName = "จุดหมาย";
+                    Destination destination = new Destination.Builder()
+                            .setName(destName)
+                            .setAddress(destName)
+                            .build();
+                    manager.updateTrip(new Trip.Builder()
+                            .addStep(step.build(), estimate)
+                            .addDestination(destination, estimate)
+                            .setCurrentRoad(guidance.currentRoad == null ? "" : guidance.currentRoad)
+                            .setLoading("rerouting".equals(phase))
+                            .build());
+                }
+            }
+            if (navTripStarted && ("idle".equals(phase) || "arrived".equals(phase) || "error".equals(phase))) {
+                manager.navigationEnded();
+                navTripStarted = false;
+            }
+        } catch (RuntimeException ex) {
+            Log.w(TAG, "NavigationManager update skipped", ex);
+        }
     }
 
     void onPlaceSelected(LatLng point,String name) {
@@ -275,33 +410,69 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
     @Override public void onRideRouteSearched(RideRouteResult result,int code) {}
 
     @Override public void onSurfaceAvailable(@NonNull SurfaceContainer surface) {
-        releasePresentation();
         if (!TripStore.consented(getCarContext()) || surface.getSurface()==null
                 || surface.getWidth()<=0 || surface.getHeight()<=0 || surface.getDpi()<=0) return;
+        if (virtualDisplay != null && surface.getWidth()==surfaceWidth && surface.getHeight()==surfaceHeight
+                && surfaceRoot != null) {
+            applyAnchor();
+            refreshHud();
+            return;
+        }
+        releasePresentation();
+        surfaceWidth=surface.getWidth();
+        surfaceHeight=surface.getHeight();
         try {
-            // Use AMAP with the host-owned Surface. Unlike a cast, this surface is sized by the car host.
             MapsInitializer.updatePrivacyShow(getCarContext(),true,true);
             MapsInitializer.updatePrivacyAgree(getCarContext(),true);
             MapsInitializer.updateCountryCode("TH");
             MapsInitializer.initRegionLanguageType(NaviLocale.thai(getCarContext()) ? 7 : 2);
             DisplayManager manager=(DisplayManager)getCarContext().getSystemService(Context.DISPLAY_SERVICE);
+            // PRESENTATION is required for Presentation. TextureMapView composites into this
+            // one surface; a SurfaceView would be a second layer the car host never shows.
             virtualDisplay=manager.createVirtualDisplay("NaviTH-AMAP-AA",surface.getWidth(),
                     surface.getHeight(),surface.getDpi(),surface.getSurface(),
-                    DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY);
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION
+                            | DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY);
             presentation=new Presentation(getCarContext(),virtualDisplay.getDisplay());
-            mapView=new MapView(presentation.getContext());
-            mapView.onCreate(null);
-            presentation.setContentView(mapView);
+            if (presentation.getWindow()!=null) {
+                presentation.getWindow().addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
+            }
+            surfaceRoot=new android.widget.FrameLayout(presentation.getContext());
+            hud=new CarSurfaceHud(presentation.getContext());
+            try {
+                mapView=new TextureMapView(presentation.getContext());
+                mapView.onCreate(null);
+                surfaceRoot.addView(mapView, new android.widget.FrameLayout.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+            } catch (Throwable mapFailure) {
+                Log.e(TAG,"AMAP map surface failed; overlays stay up",mapFailure);
+                mapView=null;
+            }
+            surfaceRoot.addView(hud, new android.widget.FrameLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+            presentation.setContentView(surfaceRoot);
             presentation.show();
-            mapView.onResume();
-            map=mapView.getMap();
-            applyCarMapStyle();
-            map.getUiSettings().setZoomControlsEnabled(false);
-            map.getUiSettings().setCompassEnabled(false);
-            updateMap();
-            applyCarMapStyle();
-        } catch (Exception e) {
-            Log.e(TAG,"MapView on virtual display needs real AA/DHU validation",e);
+            if (mapView!=null) {
+                mapView.onResume();
+                map=mapView.getMap();
+                if (map==null) throw new IllegalStateException("AMAP returned no map");
+                map.setOnMapLoadedListener(() -> Log.i(TAG,"AMAP car surface drew a frame "
+                        +surfaceWidth+"x"+surfaceHeight));
+                map.getUiSettings().setZoomControlsEnabled(false);
+                map.getUiSettings().setCompassEnabled(false);
+                map.getUiSettings().setScaleControlsEnabled(false);
+                map.getUiSettings().setAllGesturesEnabled(false);
+                applyCarMapStyle();
+                updateMap();
+                mapView.post(() -> { applyAnchor(); refreshHud(); });
+            }
+            refreshHud();
+            Log.i(TAG,"Car surface attached "+surfaceWidth+"x"+surfaceHeight
+                    +" dpi "+surface.getDpi()+" map "+(map!=null));
+        } catch (Throwable e) {
+            Log.e(TAG,"Car surface failed",e);
             releasePresentation();
         }
     }
@@ -343,8 +514,103 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
         boolean third=viewPrefs.getBoolean("view3d",true);
         map.showBuildings(third && viewPrefs.getBoolean("buildings",true));
         map.showMapText(viewPrefs.getBoolean("labels",true));
-        map.moveCamera(CameraUpdateFactory.newCameraPosition(
-                new CameraPosition.Builder(map.getCameraPosition()).tilt(third ? 55f : 0f).build()));
+        CameraPosition current=map.getCameraPosition();
+        if (!drivingFollow() && current!=null) {
+            map.moveCamera(CameraUpdateFactory.newCameraPosition(
+                    new CameraPosition.Builder(current).tilt(third ? 64f : 0f).build()));
+        }
+    }
+
+    /** Heading-up follow while a fresh maneuver is on screen and the driver has not panned. */
+    private boolean drivingFollow() {
+        return followGps && NaviGuidanceStore.fresh(getCarContext())!=null
+                && TripStore.hasFreshNavigationLocation(getCarContext());
+    }
+
+    /** Closer to the junction, closer to the road. */
+    private float maneuverZoom() {
+        NaviGuidanceStore.Snapshot guidance=NaviGuidanceStore.fresh(getCarContext());
+        float preferred=viewPrefs.getFloat("zoom",16.5f);
+        if (guidance==null) return Math.max(15f, Math.min(18f, preferred));
+        int next=guidance.nextMeters;
+        if (next<80) return 18.8f;
+        if (next<200) return 18.1f;
+        if (next<450) return 17.3f;
+        if (next<900) return 16.5f;
+        return 15.6f;
+    }
+
+    private void followOrOverview() {
+        if (map==null) return;
+        if (drivingFollow()) followCamera(true);
+        else updateMap();
+    }
+
+    private void followCamera(boolean force) {
+        if (map==null || !followGps) return;
+        LatLng at=TripStore.location(getCarContext());
+        if (at==null) return;
+        long now=android.os.SystemClock.elapsedRealtime();
+        if (!force && now-lastCarCameraUpdate<700L) return;
+        lastCarCameraUpdate=now;
+        float heading=TripStore.heading(getCarContext());
+        boolean tilted=viewPrefs.getBoolean("view3d",true);
+        if (heading>=0f && tilted) {
+            if (!Float.isFinite(smoothCarHeading)) smoothCarHeading=heading;
+            else {
+                float difference=((heading-smoothCarHeading+540f)%360f)-180f;
+                smoothCarHeading=(smoothCarHeading+
+                        Math.max(-26f,Math.min(26f,difference*0.35f))+360f)%360f;
+            }
+        }
+        CameraPosition.Builder camera=new CameraPosition.Builder().target(at)
+                .zoom(maneuverZoom())
+                .tilt(tilted ? 64f : 0f);
+        if (tilted && Float.isFinite(smoothCarHeading)) camera.bearing(smoothCarHeading);
+        else camera.bearing(map.getCameraPosition().bearing);
+        map.moveCamera(CameraUpdateFactory.newCameraPosition(camera.build()));
+        applyAnchor();
+    }
+
+    /** Keep the car in the area the host has not covered with its guidance card. */
+    private void applyAnchor() {
+        if (map==null) return;
+        Rect area=stableArea!=null && stableArea.width()>40 && stableArea.height()>40
+                ? stableArea : visibleArea;
+        int width=surfaceWidth>0 ? surfaceWidth : (mapView!=null ? mapView.getWidth() : 0);
+        int height=surfaceHeight>0 ? surfaceHeight : (mapView!=null ? mapView.getHeight() : 0);
+        if (width<=0 || height<=0) return;
+        int x=width/2;
+        int y=(int)(height*0.72f);
+        if (area!=null && area.width()>40 && area.height()>40) {
+            x=area.centerX();
+            y=area.top+(int)(area.height()*0.72f);
+        }
+        x=Math.max(0, Math.min(width-1, x));
+        y=Math.max(0, Math.min(height-1, y));
+        try { map.setPointToCenter(x, y); } catch (RuntimeException ignored) {}
+        refreshHud();
+    }
+
+    private void refreshHud() {
+        if (hud==null) return;
+        String theme=viewPrefs.getString("theme","auto");
+        boolean dark=(getCarContext().getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES;
+        boolean night="night".equals(theme) || ("auto".equals(theme) && dark);
+        NaviGuidanceStore.Snapshot guidance=NaviGuidanceStore.fresh(getCarContext());
+        java.util.List<CarHud.Toll> tolls=guidance==null
+                ? java.util.Collections.emptyList() : CarHud.decodeTolls(guidance.tolls);
+        java.util.List<CarHud.Segment> traffic=guidance==null
+                ? java.util.Collections.emptyList() : CarHud.decodeTraffic(guidance.traffic);
+        float fraction=guidance==null ? Float.NaN
+                : CarHud.traveledFraction(guidance.remainingMeters, guidance.routeMeters);
+        String road=guidance==null ? "" : guidance.currentRoad;
+        CarHud.Box area=null;
+        Rect focus=stableArea!=null && stableArea.width()>40 ? stableArea : visibleArea;
+        if (focus!=null) area=new CarHud.Box(focus.left, focus.top, focus.right, focus.bottom);
+        hud.show(night, CarHud.kmh(TripStore.speedMps(getCarContext())),
+                tolls, traffic, fraction, road, CarHud.tollTitle(NaviLocale.thai(getCarContext())), area);
     }
 
     private void recenterCarMap() {
@@ -358,20 +624,40 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
 
     /** Same AMAP-ground-aligned 2.5D artwork as the handset. */
     private BitmapDescriptor carMarkerIcon() {
-        if(carArrowIcon==null)
-            carArrowIcon=NavigationMarkerFactory.make(getCarContext(),viewPrefs);
+        if(carArrowIcon==null) {
+            android.graphics.Bitmap car=NavigationMarkerFactory.drivingCar();
+            carArrowIcon=BitmapDescriptorFactory.fromBitmap(car);
+            car.recycle();
+            if(carArrowIcon==null)
+                carArrowIcon=NavigationMarkerFactory.make(getCarContext(),viewPrefs);
+        }
         return carArrowIcon;
+    }
+
+    private BitmapDescriptor compassMarkerIcon() {
+        if(compassIcon==null) {
+            android.graphics.Bitmap ring=NavigationMarkerFactory.compassRing();
+            compassIcon=BitmapDescriptorFactory.fromBitmap(ring);
+            ring.recycle();
+        }
+        return compassIcon;
     }
 
     private void updateLocationMarker() {
         if (map==null) return;
         LatLng at=TripStore.location(getCarContext());
         if (at==null) return;
+        if (compassMarker==null) {
+            compassMarker=map.addMarker(new MarkerOptions().position(at)
+                    .anchor(0.5f,0.5f).setFlat(true)
+                    .icon(compassMarkerIcon()).zIndex(7f));
+        } else compassMarker.setPosition(at);
+        compassMarker.setRotateAngle(0f);
         if (carLocationMarker==null) {
             carLocationMarker=map.addMarker(new MarkerOptions().position(at)
                 .title(tr("ตำแหน่งของฉัน","My location"))
                 .anchor(0.5f,0.5f).setFlat(true)
-                .icon(carMarkerIcon()).zIndex(8f));
+                .icon(carMarkerIcon()).zIndex(9f));
         } else carLocationMarker.setPosition(at);
         float heading=TripStore.heading(getCarContext());
         if(heading>=0f) {
@@ -394,70 +680,97 @@ final class NaviCarScreen extends Screen implements SurfaceCallback, RouteSearch
                     .strokeWidth(2f).zIndex(0.1f));
             else {carAccuracyRing.setCenter(at);carAccuracyRing.setRadius(accuracy);}
         }else if(carAccuracyRing!=null){carAccuracyRing.remove();carAccuracyRing=null;}
-        // Follow only a fresh actual GPS fix; avoid repeated full-route redraws.
-        // Pan/zoom temporarily disables follow until user taps the Locate action.
-        if (followGps && fresh && (accuracy<0f || accuracy<=120f)) {
-            long now=android.os.SystemClock.elapsedRealtime();
-            if(now-lastCarCameraUpdate>900L) {
-                lastCarCameraUpdate=now;
-                float zoom=Math.max(15f,Math.min(19f,viewPrefs.getFloat("zoom",16f)));
-                boolean inDrive=NaviGuidanceStore.fresh(getCarContext())!=null;
-                CameraPosition.Builder camera=new CameraPosition.Builder().target(at)
-                        .zoom(inDrive?Math.max(17f,zoom):zoom)
-                        .tilt(viewPrefs.getBoolean("view3d",true)?55f:0f);
-                if(inDrive && heading>=0f && viewPrefs.getBoolean("view3d",true)){
-                    if(!Float.isFinite(smoothCarHeading))smoothCarHeading=heading;
-                    else{
-                        float difference=((heading-smoothCarHeading+540f)%360f)-180f;
-                        smoothCarHeading=(smoothCarHeading+
-                            Math.max(-26f,Math.min(26f,difference*0.35f))+360f)%360f;
-                    }
-                    camera.bearing(smoothCarHeading);
-                }
-                else camera.bearing(map.getCameraPosition().bearing);
-                map.moveCamera(CameraUpdateFactory.newCameraPosition(camera.build()));
-            }
-        }
+        // Pan/zoom turns follow off until the driver taps Locate.
+        if (followGps && fresh && (accuracy<0f || accuracy<=120f)) followCamera(false);
     }
 
     private void updateMap() {
         if (map==null) return;
         map.clear();
         carLocationMarker=null;
+        compassMarker=null;
         carAccuracyRing=null;
+        routeCasing=null;
+        routeCore=null;
         LatLng from=TripStore.location(getCarContext());
         LatLng dest=TripStore.destination(getCarContext());
         List<LatLng> path=TripStore.route(getCarContext());
         if (from!=null) {
+            compassMarker=map.addMarker(new MarkerOptions().position(from)
+                    .anchor(0.5f,0.5f).setFlat(true)
+                    .icon(compassMarkerIcon()).zIndex(7f));
             carLocationMarker=map.addMarker(new MarkerOptions().position(from)
                 .title(tr("ตำแหน่งของฉัน","My location")).anchor(0.5f,0.5f)
-                .setFlat(true).icon(carMarkerIcon()).zIndex(8f));
+                .setFlat(true).icon(carMarkerIcon()).zIndex(9f));
             float angle=TripStore.heading(getCarContext());
-            if(angle>=0f)carLocationMarker.setRotateAngle(
-                NavigationMarkerFactory.angleForBearing(angle));
+            if(angle>=0f) {
+                smoothCarMarkerHeading=angle;
+                carLocationMarker.setRotateAngle(NavigationMarkerFactory.angleForBearing(angle));
+            }
         }
-        if (dest!=null) map.addMarker(new MarkerOptions().position(dest).title(TripStore.destinationName(getCarContext())));
+        if (dest!=null) map.addMarker(new MarkerOptions().position(dest)
+                .title(TripStore.destinationName(getCarContext())).zIndex(4f));
         if (path.size()>=2) {
-            map.addPolyline(new PolylineOptions().addAll(path).width(5f).color(0xff087f73).zIndex(2));
+            // Dark edge plus a thick yellow-green core, close to AMAP's CarPlay route.
+            routeCasing=map.addPolyline(new PolylineOptions().addAll(path).width(28f)
+                    .color(0xFF16331C).zIndex(2f).geodesic(true));
+            routeCore=map.addPolyline(new PolylineOptions().addAll(path).width(16f)
+                    .color(0xFFD4F04A).zIndex(3f).geodesic(true));
+        }
+        if (drivingFollow()) {
+            followCamera(true);
+            return;
+        }
+        if (path.size()>=2) {
             LatLngBounds.Builder bounds=new LatLngBounds.Builder();
             for(LatLng p:path) bounds.include(p);
             if (from!=null) bounds.include(from);
             if (dest!=null) bounds.include(dest);
-            try { map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds.build(),80)); }
-            catch (Exception ignored) { map.moveCamera(CameraUpdateFactory.newLatLngZoom(dest!=null?dest:BANGKOK,12)); }
-        } else map.moveCamera(CameraUpdateFactory.newLatLngZoom(dest!=null?dest:(from!=null?from:BANGKOK),14));
+            try {
+                Rect area=stableArea!=null ? stableArea : visibleArea;
+                if (area!=null && surfaceWidth>0 && surfaceHeight>0) {
+                    int left=Math.max(0, area.left);
+                    int top=Math.max(0, area.top);
+                    int right=Math.max(0, surfaceWidth-area.right);
+                    int bottom=Math.max(0, surfaceHeight-area.bottom);
+                    map.moveCamera(CameraUpdateFactory.newLatLngBoundsRect(
+                            bounds.build(), left+32, right+32, top+32, bottom+32));
+                } else map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds.build(),80));
+            } catch (Exception ignored) {
+                map.moveCamera(CameraUpdateFactory.newLatLngZoom(dest!=null?dest:BANGKOK,12));
+            }
+        } else map.moveCamera(CameraUpdateFactory.newLatLngZoom(
+                dest!=null?dest:(from!=null?from:BANGKOK),14));
     }
     @Override public void onSurfaceDestroyed(@NonNull SurfaceContainer s) { releasePresentation(); }
-    @Override public void onScroll(float dx,float dy) { followGps=false; if (map!=null) map.moveCamera(CameraUpdateFactory.scrollBy(dx,dy)); }
+    @Override public void onScroll(float dx,float dy) {
+        followGps=false;
+        if (map!=null) map.moveCamera(CameraUpdateFactory.scrollBy(dx,dy));
+    }
+    @Override public void onFling(float velocityX,float velocityY) { followGps=false; }
     @Override public void onScale(float x,float y,float factor) {
         followGps=false;
         if(map!=null && factor>0) map.moveCamera(CameraUpdateFactory.zoomBy((float)(Math.log(factor)/Math.log(2))));
     }
-    @Override public void onVisibleAreaChanged(@NonNull Rect area) { /* host overlays are outside our map view */ }
+    @Override public void onVisibleAreaChanged(@NonNull Rect area) {
+        visibleArea=new Rect(area);
+        applyAnchor();
+    }
+    @Override public void onStableAreaChanged(@NonNull Rect area) {
+        stableArea=new Rect(area);
+        applyAnchor();
+    }
     private void releasePresentation() {
         map=null;
         carLocationMarker=null;
+        compassMarker=null;
         carAccuracyRing=null;
+        routeCasing=null;
+        routeCore=null;
+        hud=null;
+        surfaceRoot=null;
+        surfaceWidth=0;
+        surfaceHeight=0;
         if(mapView!=null){try{mapView.onPause();mapView.onDestroy();}catch(Exception ignored){} mapView=null;}
         if(presentation!=null){try{presentation.dismiss();}catch(Exception ignored){}presentation=null;}
         if(virtualDisplay!=null){try{virtualDisplay.release();}catch(Exception ignored){}virtualDisplay=null;}

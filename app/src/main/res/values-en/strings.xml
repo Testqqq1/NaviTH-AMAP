@@ -48,7 +48,7 @@
     <string name="search_network_error">Search failed. Check your connection and retry.</string>
     <string name="voice_not_available">No voice recognition service is available</string>
     <string name="gps_accuracy">Location accuracy is low</string>
-    <string name="start_navigation_test">Start navigation (test)</string>
+    <string name="start_navigation_test">Start navigation</string>
     <string name="route_ready">Route ready</string>
     <string name="settings_advanced">Advanced and developer</string>
     <string name="route_preferences">Route preferences  ›</string>

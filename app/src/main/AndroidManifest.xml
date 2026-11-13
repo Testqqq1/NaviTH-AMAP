@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES" />
     <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
     <application
@@ -23,6 +26,9 @@
         <meta-data android:name="androidx.car.app.minCarApiLevel" android:value="1" />
         <meta-data android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
+        <service android:name=".GuidanceService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
         <service android:name=".car.NaviCarAppService"
             android:exported="true">
             <intent-filter>
