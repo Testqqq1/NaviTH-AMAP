@@ -3,12 +3,16 @@ package com.navith.amap.debug;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.location.Location;
 
 import com.amap.api.maps.model.LatLng;
 import com.navith.amap.car.AmapLaneMap;
 import com.navith.amap.car.AmapManeuverMap;
 import com.navith.amap.car.NaviGuidanceStore;
 import com.navith.amap.car.TripStore;
+
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Debug-only injector for the Desktop Head Unit. It writes the same
@@ -24,9 +28,12 @@ public final class GuidancePreviewReceiver extends BroadcastReceiver {
         context.getSharedPreferences("navith_consent", Context.MODE_PRIVATE)
                 .edit().putBoolean("consent", true).commit();
         context.getSharedPreferences("navith_view", Context.MODE_PRIVATE)
-                .edit().putString("language", "th").commit();
-        TripStore.setDestination(context, new LatLng(13.7460, 100.5348), "สยามพารากอน");
-        TripStore.setLocation(context, new LatLng(13.7563, 100.5018));
+                .edit().putString("language", "th")
+                .putString("theme", "night")
+                .putBoolean("view3d", true)
+                .putBoolean("traffic", false)
+                .commit();
+        placeCar(context);
         switch (scene) {
             case "right":
                 drive(context, AmapManeuverMap.ICON_RIGHT, "พระรามที่ 4", 90, 2100, 360, "");
@@ -60,5 +67,26 @@ public final class GuidancePreviewReceiver extends BroadcastReceiver {
 
     private static void lanes(Context context, int[] background, int[] front) {
         NaviGuidanceStore.setLanes(context, AmapLaneMap.encode(background, front, background.length));
+    }
+
+    /** A short Sukhumvit corridor so the car surface has a real polyline and heading. */
+    private static void placeCar(Context context) {
+        List<LatLng> path = Arrays.asList(
+                new LatLng(13.7304, 100.5696),
+                new LatLng(13.7332, 100.5652),
+                new LatLng(13.7364, 100.5604),
+                new LatLng(13.7398, 100.5548),
+                new LatLng(13.7432, 100.5476),
+                new LatLng(13.7460, 100.5348));
+        Location fix = new Location("debug_preview");
+        fix.setLatitude(path.get(0).latitude);
+        fix.setLongitude(path.get(0).longitude);
+        fix.setAccuracy(12f);
+        fix.setSpeed(9f);
+        fix.setBearing(305f);
+        fix.setTime(System.currentTimeMillis());
+        TripStore.setLocation(context, fix);
+        TripStore.setDestination(context, path.get(path.size() - 1), "สยามพารากอน");
+        TripStore.setRoute(context, path, 4200f, 720, "รถยนต์");
     }
 }
