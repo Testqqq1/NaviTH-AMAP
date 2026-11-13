@@ -141,6 +141,7 @@ public final class MainActivity extends Activity implements
     private static final int PICK_MARKER_IMAGE = 3001;
     private boolean initialized = false;
     private boolean locationRequested = false;
+    private boolean precisePrompted = false;
     private PoiSearch activePoiSearch;
     private RouteSearch routeSearch;
     private GeocodeSearch geocodeSearch;
@@ -338,22 +339,13 @@ public final class MainActivity extends Activity implements
         findViewById(R.id.saveWorkButton).setOnClickListener(v -> saveShortcut("work"));
         View startNavigation=findViewById(R.id.startNavigationButton);
         startNavigation.setVisibility(View.GONE); // Only after a real route preview has been computed.
-        startNavigation.setOnClickListener(v -> {
-            if("planning".equals(NaviGuidanceStore.phase(this)))return;
-            if(NaviGuidanceStore.isNavigating(this)) {
-                NavSdkBridge.stopNavigation(this);
-                refreshNavigationAction();
-            } else if(hasRoutePreview && destination!=null && NavSdkBridge.isInstalled()) {
-                if(!hasFreshAccurateFix()) {
-                    status(tr("GPS ยังไม่พร้อม โปรดรอตำแหน่งที่แม่นยำก่อนนำทาง",
-                        "GPS is not ready. Wait for an accurate location before starting."));
-                    locateOnce();
-                    return;
-                }
-                NavSdkBridge.openRoute(this,destination,destinationName,destinationPoiId);
-            } else status(tr("คำนวณเส้นทางก่อนเริ่มนำทาง",
-                "Calculate a route before starting navigation"));
+        startNavigation.setOnClickListener(v -> beginNavigation(false));
+        startNavigation.setOnLongClickListener(v -> {
+            beginNavigation(true);
+            return true;
         });
+        View emulatorNavigation=findViewById(R.id.emulatorNavigationButton);
+        if(emulatorNavigation!=null) emulatorNavigation.setOnClickListener(v -> beginNavigation(true));
         findViewById(R.id.addressLookupButton).setOnClickListener(v -> {
             if(destination!=null)reverseSelectedAddress(destination);
         });
@@ -365,6 +357,8 @@ public final class MainActivity extends Activity implements
             if (destination != null) {
                 hasRoutePreview=false;
                 findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
+                View emulator=findViewById(R.id.emulatorNavigationButton);
+                if(emulator!=null) emulator.setVisibility(View.GONE);
                 routeSummary.setText(getString(R.string.view_route));
                 Button action=findViewById(R.id.routeButton);
                 action.setText(R.string.view_route);
@@ -478,7 +472,9 @@ public final class MainActivity extends Activity implements
                     runOnUiThread(() -> acceptLocation(fix, source));
                 }
                 @Override public void onMessage(String message) {
-                    runOnUiThread(() -> { if (myLocation == null) status(message); });
+                    runOnUiThread(() -> {
+                        if (myLocation == null || message.contains("ประมาณ")) status(message);
+                    });
                 }
             });
         }
@@ -490,10 +486,11 @@ public final class MainActivity extends Activity implements
                 locationClient = new AMapLocationClient(getApplicationContext());
                 AMapLocationClientOption options = new AMapLocationClientOption();
                 options.setLocationMode(AMapLocationClientOption.AMapLocationMode.Hight_Accuracy);
-                options.setOnceLocation(true);
-                options.setOnceLocationLatest(false);
+                options.setOnceLocation(false);
+                options.setInterval(2000);
+                options.setOnceLocationLatest(true);
                 options.setGpsFirst(true);
-                options.setGpsFirstTimeout(3000L);
+                options.setGpsFirstTimeout(8000L);
                 options.setNeedAddress(false);
                 locationClient.setLocationOption(options);
                 locationClient.setLocationListener(this::onLocated);
@@ -502,24 +499,21 @@ public final class MainActivity extends Activity implements
         } catch (Exception e) {
             if (myLocation == null) status(tr("AMAP ไม่พร้อม • รอ GPS จาก Android","AMAP unavailable; waiting for device GPS"));
         }
+        if (hasLocationPermission() && !hasFineLocation()) requestPreciseIfApproximate();
     }
 
     private void acceptLocation(Location fix, String source) {
         if (!initialized || isFinishing() || fix == null) return;
         if (!Double.isFinite(fix.getLatitude()) || !Double.isFinite(fix.getLongitude())) return;
         if (Math.abs(fix.getLatitude()) > 90 || Math.abs(fix.getLongitude()) > 180) return;
-        float accuracy = fix.hasAccuracy() ? fix.getAccuracy() : 150f;
-        if (accuracy > 250f) return;
+        float reported = fix.hasAccuracy() ? fix.getAccuracy() : -1f;
+        boolean live = source == null || !source.contains("ล่าสุด");
+        LocationFixGate.Verdict verdict = LocationFixGate.evaluate(
+                SystemClock.elapsedRealtimeNanos(), fix.getElapsedRealtimeNanos(),
+                System.currentTimeMillis(), fix.getTime(), reported, live);
+        if (!verdict.accept) return;
+        float accuracy = reported > 0f ? reported : 150f;
         long now = SystemClock.elapsedRealtime();
-        // Reject Android cached/stale fixes; otherwise camera, turn and speed
-        // can appear current while the receiver has stopped delivering updates.
-        if(fix.getElapsedRealtimeNanos()>0L) {
-            long fixAgeMs=(android.os.SystemClock.elapsedRealtimeNanos()-
-                fix.getElapsedRealtimeNanos())/1_000_000L;
-            if(fixAgeMs>15000L || fixAgeMs< -2000L)return;
-        }
-        if (lastLocationFixUptime != 0 && now - lastLocationFixUptime < 12000L
-                && accuracy > lastLocationAccuracy * 2.0f) return;
         boolean first = myLocation == null;
         myLocation = new LatLng(fix.getLatitude(), fix.getLongitude());
         lastLocationFixUptime = now;
@@ -940,6 +934,8 @@ public final class MainActivity extends Activity implements
         routeSummary.setText(tr("เลือกจุดหมายแล้ว • ดูเส้นทาง","Destination selected · View route"));
         hasRoutePreview=false;
         findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
+        View selectedEmulator=findViewById(R.id.emulatorNavigationButton);
+        if(selectedEmulator!=null) selectedEmulator.setVisibility(View.GONE);
         Button routeAction=findViewById(R.id.routeButton);
         routeAction.setBackgroundResource(R.drawable.nav_bg_button);
         routeAction.setTextColor(Color.WHITE);
@@ -953,11 +949,65 @@ public final class MainActivity extends Activity implements
         status(tr("เลือกจุดหมายแล้ว: ","Destination: ")+label);
     }
 
-    /** A saved coordinate is not a usable live navigation origin. */
+    private boolean hasFineLocation() {
+        return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /** Ask again when Android granted approximate location only. */
+    private void requestPreciseIfApproximate() {
+        if (hasFineLocation() || precisePrompted) return;
+        precisePrompted = true;
+        status(tr("ตำแหน่งแบบประมาณ — เปิดความแม่นยำสูง (Precise) ในการตั้งค่าแอป",
+            "Approximate location only — enable Precise location in app settings"));
+        requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOCATION);
+    }
+
+    /** Recent enough to skip the "still searching" note. Never a hard block. */
     private boolean hasFreshAccurateFix() {
         long age=SystemClock.elapsedRealtime()-lastLocationFixUptime;
+        boolean accurate=lastLocationAccuracy<=0f
+            || lastLocationAccuracy<=LocationFixGate.MAX_ACCURACY_METERS;
         return myLocation!=null && lastLocationFixUptime>0 &&
-            age>=0 && age<=15000L && lastLocationAccuracy<=100f;
+            age>=0 && age<=LocationFixGate.LIVE_MAX_AGE_MS && accurate;
+    }
+
+    private void beginNavigation(boolean emulator) {
+        if("planning".equals(NaviGuidanceStore.phase(this)))return;
+        if(!emulator && NaviGuidanceStore.isNavigating(this)) {
+            NavSdkBridge.stopNavigation(this);
+            refreshNavigationAction();
+            return;
+        }
+        if(!hasRoutePreview || destination==null) {
+            status(tr("คำนวณเส้นทางก่อนเริ่มนำทาง",
+                "Calculate a route before starting navigation"));
+            return;
+        }
+        if(modeGroup.getCheckedRadioButtonId()==R.id.modeWalk) {
+            status(tr("การนำทางเลี้ยวต่อเลี้ยวยังรองรับเฉพาะโหมดขับรถ",
+                "Turn-by-turn is available for driving only"));
+            return;
+        }
+        if(!hasFineLocation()) requestPreciseIfApproximate();
+        if(myLocation==null) {
+            status(tr("GPS ไม่พร้อมหรือพิกัดเก่า • กำลังค้นหาตำแหน่งใหม่",
+                "GPS unavailable, inaccurate or stale · acquiring a fresh fix"));
+            if(hasLocationPermission()) locateOnce();
+            else { locationRequested=false; askForLocation(); }
+            return;
+        }
+        if(!hasFreshAccurateFix()) {
+            status(tr("เริ่มนำทางด้วยตำแหน่งล่าสุด • AMAP จะค้นหา GPS ต่อ",
+                "Starting from the latest position · AMAP will keep acquiring GPS"));
+        }
+        boolean debug=(getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0;
+        if(emulator && debug) {
+            NavSdkBridge.openEmulator(this, myLocation, destination);
+        } else {
+            NavSdkBridge.openRoute(this,destination,destinationName,destinationPoiId);
+        }
     }
 
     private void calculateRoute() {
@@ -965,12 +1015,17 @@ public final class MainActivity extends Activity implements
             status(tr("เลือกจุดหมายก่อน","Choose a destination first"));
             return;
         }
-        if (!hasFreshAccurateFix()) {
+        if (myLocation == null) {
             status(tr("GPS ไม่พร้อมหรือพิกัดเก่า • กำลังค้นหาตำแหน่งใหม่",
                 "GPS unavailable, inaccurate or stale · acquiring a fresh fix"));
             if (hasLocationPermission()) locateOnce();
             else { locationRequested = false; askForLocation(); }
             return;
+        }
+        if (!hasFreshAccurateFix()) {
+            status(tr("ใช้ตำแหน่งล่าสุด • กำลังค้นหา GPS ที่ใหม่กว่า",
+                "Using the latest position · still searching for a newer GPS fix"));
+            if (hasLocationPermission()) locateOnce();
         }
         if (routeSearch == null) {
             status(tr("บริการคำนวณเส้นทางยังไม่พร้อม","Route service unavailable"));
@@ -981,6 +1036,8 @@ public final class MainActivity extends Activity implements
         routeSummary.setText(tr("กำลังคำนวณเส้นทาง…","Calculating route…"));
         hasRoutePreview=false;
         findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
+        View calculatingEmulator=findViewById(R.id.emulatorNavigationButton);
+        if(calculatingEmulator!=null) calculatingEmulator.setVisibility(View.GONE);
         try {
             RouteSearch.FromAndTo fromAndTo = new RouteSearch.FromAndTo(
                     toPoint(myLocation), toPoint(destination));
@@ -1098,9 +1155,8 @@ public final class MainActivity extends Activity implements
         routeSummary.setText(mode + "  •  " + km + "  •  " + time);
         ((Button)findViewById(R.id.routeButton)).setText(R.string.change_route);
         hasRoutePreview=true;
-        boolean canStart=NavSdkBridge.isInstalled() &&
-            modeGroup.getCheckedRadioButtonId()!=R.id.modeWalk;
-        findViewById(R.id.startNavigationButton).setVisibility(canStart?View.VISIBLE:View.GONE);
+        boolean canStart=modeGroup.getCheckedRadioButtonId()!=R.id.modeWalk;
+        refreshNavigationAction();
         Button routeAction=findViewById(R.id.routeButton);
         routeAction.setBackgroundResource(canStart?R.drawable.nav_bg_subtle:R.drawable.nav_bg_button);
         routeAction.setTextColor(canStart?getColor(R.color.nav_primary):Color.WHITE);
@@ -1111,6 +1167,8 @@ public final class MainActivity extends Activity implements
     private void routeFailed(int code) {
         hasRoutePreview=false;
         findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
+        View failedEmulator=findViewById(R.id.emulatorNavigationButton);
+        if(failedEmulator!=null) failedEmulator.setVisibility(View.GONE);
         routeSummary.setText(tr("ไม่พบเส้นทาง (","No route (")+code+tr(") • ตรวจสอบพื้นที่บริการ",") · Check coverage"));
         status(tr("อาจไม่มีข้อมูลเส้นทางในพื้นที่นี้","Route data may be unavailable here"));
     }
@@ -1145,6 +1203,8 @@ public final class MainActivity extends Activity implements
         renderHomeRecent();
         hasRoutePreview=false;
         findViewById(R.id.startNavigationButton).setVisibility(View.GONE);
+        View clearedEmulator=findViewById(R.id.emulatorNavigationButton);
+        if(clearedEmulator!=null) clearedEmulator.setVisibility(View.GONE);
         driveAlternatives.clear();
         LinearLayout alt=findViewById(R.id.routeAlternatives);
         if(alt!=null)alt.removeAllViews();
@@ -1828,13 +1888,22 @@ public final class MainActivity extends Activity implements
         boolean running=NaviGuidanceStore.isNavigating(this);
         boolean launching="planning".equals(NaviGuidanceStore.phase(this));
         b.setEnabled(!launching);
-        b.setVisibility(NavSdkBridge.isInstalled() &&
-            (running || hasRoutePreview) &&
-            modeGroup.getCheckedRadioButtonId()!=R.id.modeWalk ? View.VISIBLE:View.GONE);
+        boolean driving=modeGroup.getCheckedRadioButtonId()!=R.id.modeWalk;
+        b.setVisibility((running || hasRoutePreview) && driving ? View.VISIBLE:View.GONE);
         b.setText(launching ? tr("กำลังเริ่มนำทาง…","Starting navigation…") :
             running ? tr("หยุดนำทาง","Stop navigation") :
             tr("เริ่มนำทาง","Start navigation"));
         b.setContentDescription(b.getText());
+        View emulator=findViewById(R.id.emulatorNavigationButton);
+        if(emulator!=null) {
+            boolean debug=(getApplicationInfo().flags
+                & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0;
+            emulator.setVisibility(debug && hasRoutePreview && driving && !running
+                ? View.VISIBLE:View.GONE);
+            if(emulator instanceof Button) {
+                ((Button)emulator).setText(tr("นำทางจำลอง (ในอาคาร)","Emulated navigation (indoors)"));
+            }
+        }
     }
     private void showNavigationStateOnce() {
         long stamp=com.navith.amap.car.TripStore.prefs(this).getLong("navi_phase_at",0L);

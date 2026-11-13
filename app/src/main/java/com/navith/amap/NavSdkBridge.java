@@ -29,6 +29,8 @@ public final class NavSdkBridge {
     private NavSdkBridge() {}
     private static Object guidanceListener;
     private static Object guidanceEngine;
+    /** Debug builds only. Start {@code NaviType.EMULATOR} after the next route success. */
+    private static volatile boolean pendingEmulator;
 
     public static boolean isInstalled() {
         try {
@@ -56,10 +58,14 @@ public final class NavSdkBridge {
                 "ติดตั้ง NaviTH Navigation Test APK ที่ Build ด้วยชุด AMAP Navigation SDK แทนรุ่น Maps-only");
             return;
         }
-        if (activity.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+        boolean fine=activity.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+            ==PackageManager.PERMISSION_GRANTED;
+        boolean coarse=activity.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+            ==PackageManager.PERMISSION_GRANTED;
+        if (!fine && !coarse) {
             show(activity,
                 "ต้องอนุญาตตำแหน่ง",
-                "การนำทางด้วย GPS ต้องเปิดสิทธิ์ตำแหน่งแบบแม่นยำจากการตั้งค่า Android ก่อน");
+                "การนำทางต้องเปิดสิทธิ์ตำแหน่งจากการตั้งค่า Android ก่อน ถ้ามีตัวเลือก ให้เลือกความแม่นยำสูง (Precise)");
             return;
         }
         if (!activity.getSharedPreferences(CONSENT, Context.MODE_PRIVATE).getBoolean("accepted", false)) {
@@ -120,8 +126,10 @@ public final class NavSdkBridge {
                                 break;
                             case "onCalculateRouteSuccess":
                                 NaviGuidanceStore.planned(context);
+                                if(pendingEmulator) startPendingEmulator(context);
                                 break;
                             case "onCalculateRouteFailure":
+                                pendingEmulator=false;
                                 int code=(args!=null && args.length>0 && args[0]!=null)
                                     ?asInt(args[0],"getErrorCode"):-1;
                                 NaviGuidanceStore.failed(context,"คำนวณเส้นทางไม่สำเร็จ · AMAP "+code);
@@ -353,8 +361,97 @@ public final class NavSdkBridge {
         }
     }
 
+    /**
+     * Debug indoor navigation. Calculates a drive route on the shared AMAP engine
+     * and starts {@code NaviType.EMULATOR} (2), which feeds the same listener the
+     * car screen already watches. Release builds ignore the call.
+     */
+    public static void openEmulator(Activity activity, LatLng origin, LatLng destination) {
+        if((activity.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)==0)
+            return;
+        if(origin==null || destination==null) return;
+        if(!isInstalled()) {
+            show(activity,
+                "Navigation SDK ยังไม่รวมอยู่ใน APK นี้",
+                "นำทางจำลองต้องใช้ NaviTH Navigation Test APK");
+            return;
+        }
+        if(!activity.getSharedPreferences(CONSENT, Context.MODE_PRIVATE).getBoolean("accepted", false)) {
+            new AlertDialog.Builder(activity)
+                .setTitle("อนุญาต AMAP Navigation SDK")
+                .setMessage("โหมดจำลองจะขับตำแหน่งไปตามเส้นทางโดยไม่ใช้ GPS จริง เพื่อทดสอบการนำทางในอาคารและบน Android Auto")
+                .setPositiveButton("ยินยอมและเริ่มจำลอง", (d, w) -> {
+                    activity.getSharedPreferences(CONSENT, Context.MODE_PRIVATE).edit()
+                        .putBoolean("accepted", true).apply();
+                    startEmulator(activity, origin, destination);
+                })
+                .setNegativeButton("ยกเลิก", null)
+                .show();
+        } else startEmulator(activity, origin, destination);
+    }
+
+    private static void startEmulator(Activity activity, LatLng origin, LatLng destination) {
+        try {
+            Class<?> privacy = Class.forName("com.amap.api.navi.NaviSetting");
+            privacy.getMethod("updatePrivacyShow", Context.class, boolean.class, boolean.class)
+                .invoke(null, activity.getApplicationContext(), true, true);
+            privacy.getMethod("updatePrivacyAgree", Context.class, boolean.class)
+                .invoke(null, activity.getApplicationContext(), true);
+            attachGuidanceListener(activity.getApplicationContext());
+            if(guidanceEngine==null) {
+                show(activity, "ยังเริ่มนำทางจำลองไม่ได้", "Navigation engine ไม่พร้อม");
+                return;
+            }
+            Class<?> pointType=Class.forName("com.amap.api.navi.model.NaviLatLng");
+            java.lang.reflect.Constructor<?> point=pointType.getConstructor(double.class, double.class);
+            Object from=point.newInstance(origin.latitude, origin.longitude);
+            Object to=point.newInstance(destination.latitude, destination.longitude);
+            int strategy=10;
+            try {
+                strategy=Class.forName("com.amap.api.navi.enums.PathPlanningStrategy")
+                    .getField("DRIVING_MULTIPLE_ROUTES_DEFAULT").getInt(null);
+            } catch(ReflectiveOperationException ignored) { }
+            pendingEmulator=true;
+            NaviGuidanceStore.launching(activity.getApplicationContext());
+            Object started=guidanceEngine.getClass()
+                .getMethod("calculateDriveRoute", java.util.List.class, java.util.List.class, int.class)
+                .invoke(guidanceEngine, java.util.Collections.singletonList(from),
+                    java.util.Collections.singletonList(to), strategy);
+            if(!(started instanceof Boolean) || !((Boolean)started)) {
+                pendingEmulator=false;
+                NaviGuidanceStore.failed(activity.getApplicationContext(),"คำนวณเส้นทางจำลองไม่สำเร็จ");
+            }
+        } catch(Throwable failure) {
+            pendingEmulator=false;
+            Log.e("NaviTH/Navigation", "Emulator navigation failed", failure);
+            NaviGuidanceStore.failed(activity.getApplicationContext(),"เริ่มนำทางจำลองไม่สำเร็จ");
+            show(activity, "ยังเริ่มนำทางจำลองไม่ได้",
+                "ตรวจ Navigation SDK แล้วลองอีกครั้ง");
+        }
+    }
+
+    /** NaviType.EMULATOR == 2. Called from the route-success callback. */
+    private static void startPendingEmulator(Context context) {
+        pendingEmulator=false;
+        if(guidanceEngine==null) return;
+        try {
+            guidanceEngine.getClass().getMethod("startNavi", int.class).invoke(guidanceEngine, 2);
+        } catch(Throwable failure) {
+            Log.e("NaviTH/Navigation", "startNavi(EMULATOR) failed", failure);
+            NaviGuidanceStore.failed(context, "เริ่มนำทางจำลองไม่สำเร็จ");
+        }
+    }
+
     /** Exit the official component; never fake the navigation state. */
     public static void stopNavigation(Activity activity) {
+        pendingEmulator=false;
+        boolean engineStopped=false;
+        if(guidanceEngine!=null) {
+            try {
+                guidanceEngine.getClass().getMethod("stopNavi").invoke(guidanceEngine);
+                engineStopped=true;
+            } catch(Throwable ignored) { }
+        }
         if(!isInstalled())return;
         try {
             Class<?> page=Class.forName("com.amap.api.navi.AmapNaviPage");
@@ -363,7 +460,8 @@ public final class NavSdkBridge {
             NaviGuidanceStore.stopped(activity.getApplicationContext());
         }catch(Throwable e){
             Log.e("NaviTH/Navigation","Cannot exit official component",e);
-            show(activity,"หยุดนำทางไม่ได้","กรุณากลับไปที่หน้าของ AMAP Navigation และกดยุติการนำทาง");
+            if(engineStopped) NaviGuidanceStore.stopped(activity.getApplicationContext());
+            else show(activity,"หยุดนำทางไม่ได้","กรุณากลับไปที่หน้าของ AMAP Navigation และกดยุติการนำทาง");
         }
     }
 

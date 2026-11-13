@@ -254,6 +254,17 @@
                 android:textSize="15sp"
                 android:visibility="gone"
                 android:contentDescription="@string/start_navigation_test" />
+        <Button android:id="@+id/emulatorNavigationButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/nav_bg_subtle"
+            android:text="นำทางจำลอง (ในอาคาร)"
+            android:textAllCaps="false"
+            android:textColor="@color/nav_primary"
+            android:textSize="14sp"
+            android:visibility="gone"
+            android:contentDescription="นำทางจำลอง (ในอาคาร)" />
         <Button android:id="@+id/routeButton"
             android:layout_width="match_parent" android:layout_height="52dp"
             android:layout_marginTop="10dp" android:background="@drawable/nav_bg_button"
